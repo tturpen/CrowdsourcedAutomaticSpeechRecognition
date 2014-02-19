@@ -15,4 +15,11 @@ class MultipleResultsOnIdFind(Exception):
     """Raise if a find on an ID returns multiple results"""
     def __init__(self,message):
         return str("Multiple results for ID find on ID: %s"%message)
+    
+class IncorrectTextFieldCount(Exception):
+    """Raise if there is an incorrect number of text fields in 
+        the QuestionFormAnswer"""
+    def __init__(self,message):
+        raise
+    
         
