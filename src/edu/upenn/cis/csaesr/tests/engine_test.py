@@ -49,8 +49,12 @@ def main():
     available_hits = []
     
     #tph.hh.make_transcription_HIT("http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav")   
-    tph.hh.make_html_transcription_HIT(["http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav"],hit_title,
-                                 question_title, description, keywords)
+    audio_pairs = [("http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav",12345),
+                   ("http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav",54321)]
+    #===========================================================================
+    # tph.hh.make_html_transcription_HIT(audio_pairs,hit_title,
+    #                              question_title, description, keywords)
+    #===========================================================================
     #===========================================================================
     # tph.hh.make_question_form_HIT(["http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav"],hit_title,
     #                              question_title, description, keywords)
@@ -58,15 +62,18 @@ def main():
     
     for hit in allhits:
         allassignments = tph.conn.get_assignments(hit.HITId)
+        first = tph.ah.get_submitted_transcriptions(hit.HITId,str(12345))
+        print("Submitted transcriptions for %d: %s given hitID: %s "%(12345,first,hit.HITId))
 
-        try:
-            tph.conn.disable_hit(hit.HITId)
-        except MTurkRequestError as e:
-            if e.reason != "OK":
-                raise 
-            
         if hit.HITStatus == "Assignable":
             available_hits.append(TranscriptionHit(hit))
+        if raw_input("Remove hit?(y/n)") == "y":
+            try:
+                tph.conn.disable_hit(hit.HITId)
+            except MTurkRequestError as e:
+                if e.reason != "OK":
+                    raise 
+           
             
     for hit in available_hits:
         print(hit.toString())
