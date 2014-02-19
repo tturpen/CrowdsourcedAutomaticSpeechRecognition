@@ -13,6 +13,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from boto.mturk.connection import MTurkConnection, MTurkRequestError
 from boto.mturk.question import ExternalQuestion, QuestionForm, Overview, HTMLQuestion, QuestionContent, FormattedContent, FreeTextAnswer, AnswerSpecification, Question
+from handlers.Exceptions import IncorrectTextFieldCount
 import os
 
 class AssignmentHandler():
@@ -27,6 +28,20 @@ class AssignmentHandler():
 
     def get_assignment(self,assignment_id,response_groups=None):
         return self.conn.get_assignment(assignment_id, response_groups)  
+    
+    def get_submitted_transcriptions(self,hit_id,audio_clip_id):
+        """Given the hit_id and the audio clip id, find all transcriptions
+            in the submitted assignments"""
+        allassignments = self.conn.get_assignments(hit_id)
+        response = []
+        for assignment in allassignments:
+            for result_set in assignment.answers:
+                for question_form_answer in result_set:
+                    if question_form_answer.qid == audio_clip_id:
+                        if len(question_form_answer.fields) != 1:
+                            raise IncorrectTextFieldCount
+                        response.append(question_form_answer.fields[0])
+        return response
          
         
 class TurkerHandler():
@@ -49,7 +64,8 @@ class HitHandler():
         self.templates = {}
         self.html_tags = {"audio_url" : "${audiourl}",
                           "title" : "${title}",
-                          "description" : "${description}"}
+                          "description" : "${description}",
+                          "audioclip_id" : "${audioclipid}"}
         self.html_head = open(os.path.join(template_dir,"transcriptionhead.html")).read()
         self.html_tail =  open(os.path.join(template_dir,"transcriptiontail.html")).read()
         self.html_question = open(os.path.join(template_dir,"transcriptionquestion.html")).read()
@@ -78,8 +94,8 @@ class HitHandler():
         keywords = "audio, transcription"
         html_head = self.html_head.replace(self.html_tags["title"],hit_title).replace(self.html_tags["description"],description)
         html = html_head
-        for ac in audio_clip_urls:
-            question = self.html_question.replace(self.html_tags["audio_url"],ac)
+        for acurl,acid in audio_clip_urls:
+            question = self.html_question.replace(self.html_tags["audio_url"],acurl).replace(self.html_tags["audioclip_id"],str(acid))
             html += question
         
         html += self.html_tail
