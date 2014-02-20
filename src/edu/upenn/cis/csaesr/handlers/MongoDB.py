@@ -92,7 +92,7 @@ class MongoHandler(object):
     def get_audio_clip_pairs(self,clip_queue):
         return [(self.get_audio_clip_url(w["audio_clip_id"]),w["audio_clip_id"]) for w in clip_queue]
     
-    def get_audio_clip_queue(self,audio_clip_id,priority=1,max_queue_size=10):
+    def get_audio_clip_queue(self,audio_clip_id,priority=1,max_queue_size=3):
         """Insert the audio clip by id into the queue.
             Get all the clips waiting in the queue and not being processed
             Find the largest queue that is full
@@ -122,9 +122,6 @@ class MongoHandler(object):
                                                  update = { "$set" : {"processing":t}}
                                                 )
         return max_q
-        
-            
-        
     
 def main():
     mh = MongoHandler()

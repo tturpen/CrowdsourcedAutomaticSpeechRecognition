@@ -100,13 +100,18 @@ class HitHandler():
         
         html += self.html_tail
         html_question = HTMLQuestion(html,800)
-        return self.conn.create_hit(title=hit_title,
+        try:
+            return self.conn.create_hit(title=hit_title,
                                     question=html_question,
                                     max_assignments=1,
                                     description=description,
                                     keywords=keywords,
                                     duration = 60*5,
                                     reward = 0.02)
+        except MTurkRequestError as e:
+            if e.reason != "OK":
+                raise 
+            else: return e
         
         
     def make_question_form_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,
