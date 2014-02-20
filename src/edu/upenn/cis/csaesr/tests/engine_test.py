@@ -37,16 +37,21 @@ class TranscriptionPipelineHandler():
     def generate_audio_HITs(self):
         pass   
     
-    def audio_clip_lifecycle(self,audio_clip_id):    
+    def audio_clip_lifecycle(self,audio_clip_id,priority=1,max_queue_size=3):    
         audio_clip_url = self.mh.get_audio_clip_url(audio_clip_id)
         status = self.mh.get_audio_clip_status(audio_clip_id)
         if status == "New":
+            self.mh.queue_clip(audio_clip_id, priority, max_queue_size)
             response = self.transcription_hit_lifecycle_from_new(audio_clip_id)
-            self.mh.update_audio_clip_status(audio_clip_url,response)
+        elif status == "Queued":
+            response = self.transcription_hit_lifecycle_from_new(audio_clip_id)
+        elif status == "Hit":
+            print("In hit: %s"%audio_clip_url)
+
     
     def transcription_hit_lifecycle_from_new(self,audio_clip_id):
         #Queue is the audio clip and 
-        clip_queue = self.mh.get_audio_clip_queue(audio_clip_id)
+        clip_queue = self.mh.get_audio_clip_queue()
         clip_pairs = self.mh.get_audio_clip_pairs(clip_queue)
         if clip_pairs:
             hit_title = "Audio Transcription"
@@ -56,7 +61,9 @@ class TranscriptionPipelineHandler():
             response = self.hh.make_html_transcription_HIT(clip_pairs,hit_title,
                                          question_title, description, keywords)
             if response:
-                self.mh.update_audio_clip_queue(clip_pairs)
+                self.mh.update_audio_clip_queue(clip_queue)
+                audio_clip_ids = [w["audio_clip_id"] for w in clip_queue]            
+                return self.mh.update_audio_clip_status(audio_clip_ids,"Hit")
             else:
                 return False
             
@@ -89,9 +96,10 @@ class TranscriptionPipelineHandler():
 def main():
     audio_clip_id = 12345
     tph = TranscriptionPipelineHandler()
-    selection = raw_input("""Please make a selection:\n
-                                1: To create a HIT from the latest audioclip queue.
-                                2: To list the current HITs (and delete them if desired.""")
+    #----------------------- selection = raw_input("""Please make a selection:\n
+                                # 1: To create a HIT from the latest audioclip queue.
+                                # 2: To list the current HITs (and delete them if desired.""")
+    selection = "1"
     if selection == "1":
         tph.audio_clip_lifecycle(audio_clip_id)
     elif selection == "2":

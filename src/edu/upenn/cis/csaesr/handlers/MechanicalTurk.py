@@ -112,6 +112,7 @@ class HitHandler():
             if e.reason != "OK":
                 raise 
             else: return e
+        return True
         
         
     def make_question_form_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,

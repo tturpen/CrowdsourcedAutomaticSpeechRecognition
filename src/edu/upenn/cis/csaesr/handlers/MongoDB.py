@@ -68,17 +68,17 @@ class MongoHandler(object):
         return self.audio_clip_find_one({"_id" : audio_clip_id},"audio_clip_url")
     
     def get_audio_clip_status(self,audio_clip_id):
-        return self.audio_clip_find_one({"_id" : audio_clip_id},"Status")
+        return self.audio_clip_find_one({"_id" : audio_clip_id},"status")
     
     def get_max_queue(self,max_sizes):
         max_q = []
         for q in max_sizes:
             #For each q in each q size
-            if len(max_sizes[q]) == q:
+            if len(max_sizes[q]) >= q:
                 #if the q is full
                 if q > len(max_q):
                     #if the q is bigger than the q with the most clips
-                    max_q = max_sizes[q]
+                    max_q = max_sizes[q][:q]
         return max_q
     
     def revive_audio_clip_queue(self):
@@ -87,24 +87,39 @@ class MongoHandler(object):
         non_none = self.audio_clip_queue.find({"processing": {"$ne" : None}})
         for clip in non_none:
             if  time() - clip["processing"] > self.queue_revive_time:
-                self.audio_clip_queue.update({"_id":clip["_id"]}, {"$set" : {"processing" : None}})               
+                self.audio_clip_queue.update({"_id":clip["_id"]}, {"$set" : {"processing" : None}})  
+    
+    def update_audio_clip_queue(self,clip_queue):
+        """Remove the audio clip entries from the clip queue"""
+        for clip in clip_queue:
+            self.audio_clip_queue.remove({"_id":clip["_id"]})       
+            
+    def update_audio_clip_status(self,clip_id_list,new_status):
+        if type(clip_id_list) != list:
+            raise IOError
+        for clip_id in clip_id_list:
+            self.audio_clips.update({"_id":clip_id},  {"$set" : {"status" : new_status}}  )   
+        return True
                 
     def get_audio_clip_pairs(self,clip_queue):
         return [(self.get_audio_clip_url(w["audio_clip_id"]),w["audio_clip_id"]) for w in clip_queue]
     
-    def get_audio_clip_queue(self,audio_clip_id,priority=1,max_queue_size=3):
+    def queue_clip(self,audio_clip_id,priority=1,max_queue_size=3):
+        self.audio_clip_queue.update({"audio_clip_id": audio_clip_id},
+                             {"audio_clip_id": audio_clip_id,
+                              "priority": priority,
+                              "max_size": max_queue_size,
+                              "processing" : None,
+                              },
+                             upsert = True)
+        self.update_audio_clip_status([audio_clip_id], "Queued")
+        
+    def get_audio_clip_queue(self):
         """Insert the audio clip by id into the queue.
             Get all the clips waiting in the queue and not being processed
             Find the largest queue that is full
             Update the queue and return the clips"""            
         self.revive_audio_clip_queue()
-        self.audio_clip_queue.update({"audio_clip_id": audio_clip_id},
-                                     {"audio_clip_id": audio_clip_id,
-                                      "priority": priority,
-                                      "max_size": max_queue_size,
-                                      "processing" : None,
-                                      },
-                                     upsert = True)
         queue = self.audio_clip_queue.find({"processing":None})
         max_sizes = defaultdict(list)
         for clip in queue:
