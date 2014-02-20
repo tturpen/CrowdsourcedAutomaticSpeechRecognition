@@ -44,21 +44,15 @@ class TranscriptionPipelineHandler():
             response = self.transcription_hit_lifecycle_from_new(audio_clip_url)
             self.mh.update_audio_clip_status(audio_clip_url,response)
     
-    def transcription_hit_lifecycle_from_new(self,audio_clip_url):
+    def transcription_hit_lifecycle_from_new(self,audio_clip_id):
         #Queue is the audio clip and 
-        clip_queue = self.mh.get_audio_clip_queue(audio_clip_url)
+        clip_queue = self.mh.get_audio_clip_queue(audio_clip_id)
         clip_pairs = self.mh.get_audio_clip_pairs(clip_queue)
         if clip_pairs:
             hit_title = "Audio Transcription"
             question_title = "List and Transcribe" 
             description = "Transcribe the audio clip by typing the words the person says in order."
             keywords = "audio, transcription, audio transcription"
-        
-            allhits = self.conn.get_all_hits()
-        
-            expired_hits = []
-            available_hits = []
-    
             response = self.hh.make_html_transcription_HIT(clip_pairs,hit_title,
                                          question_title, description, keywords)
             if response:
@@ -68,22 +62,27 @@ class TranscriptionPipelineHandler():
             
     def transcription_hit_lifecycle_from_assigned(self,hit_id):
         allassignments = self.conn.get_assignments(hit_id)
-        #------ first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
-        # print("Submitted transcriptions for %d: %s given hitID: %s "%(clipid,first,hit_id))
-#------------------------------------------------------------------------------ 
-        #------------------------------------- if hit.HITStatus == "Assignable":
-            #---------------------- available_hits.append(TranscriptionHit(hit))
-        #------------------------------ if raw_input("Remove hit?(y/n)") == "y":
-            #-------------------------------------------------------------- try:
-                #------------------------------ self.conn.disable_hit(hit.HITId)
-            #------------------------------------ except MTurkRequestError as e:
-                #------------------------------------------ if e.reason != "OK":
-                    #----------------------------------------------------- raise
-#------------------------------------------------------------------------------ 
-#------------------------------------------------------------------------------ 
-            #---------------------------------------- for hit in available_hits:
-                #----------------------------------------- print(hit.toString())
+        #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
+
+        hits = self.conn.get_all_hits()
+        clip_id = 12345
+        for hit in hits:
+            hit_id = hit.HITId
+            print("Submitted transcriptions for %d given hitID: %s "%(clip_id,hit_id))
+            print(hit)
+            if raw_input("Remove hit?(y/n)") == "y":
+                try:
+                    self.conn.disable_hit(hit.HITId)
+                except MTurkRequestError as e:
+                    if e.reason != "OK":
+                        raise
         
+#------------------------------------------------------------------------------ 
+            #-------------------------------- allhits = self.conn.get_all_hits()
+#------------------------------------------------------------------------------ 
+            #------------------------------------------------- expired_hits = []
+            #----------------------------------------------- available_hits = []
+    
 
 
     

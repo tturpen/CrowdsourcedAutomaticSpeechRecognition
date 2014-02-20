@@ -87,16 +87,24 @@ class MongoHandler(object):
         non_none = self.audio_clip_queue.find({"processing": {"$ne" : None}})
         for clip in non_none:
             if  time() - clip["processing"] > self.queue_revive_time:
-                self.audio_clip_queue.update({"_id":clip["_id"]}, {"$set" : {"processing" : None}})  
+                self.audio_clip_queue.update({"_id":clip["_id"]}, {"$set" : {"processing" : None}})               
                 
     def get_audio_clip_pairs(self,clip_queue):
         return [(self.get_audio_clip_url(w["audio_clip_id"]),w["audio_clip_id"]) for w in clip_queue]
     
-    def get_audio_clip_queue(self,audio_clip_id):
-        """Get all the clips waiting in the queue and not being processed
+    def get_audio_clip_queue(self,audio_clip_id,priority=1,max_queue_size=10):
+        """Insert the audio clip by id into the queue.
+            Get all the clips waiting in the queue and not being processed
             Find the largest queue that is full
             Update the queue and return the clips"""            
         self.revive_audio_clip_queue()
+        self.audio_clip_queue.update({"audio_clip_id": audio_clip_id},
+                                     {"audio_clip_id": audio_clip_id,
+                                      "priority": priority,
+                                      "max_size": max_queue_size,
+                                      "processing" : None,
+                                      },
+                                     upsert = True)
         queue = self.audio_clip_queue.find({"processing":None})
         max_sizes = defaultdict(list)
         for clip in queue:
