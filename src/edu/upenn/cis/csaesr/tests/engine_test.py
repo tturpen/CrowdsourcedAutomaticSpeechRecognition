@@ -41,7 +41,7 @@ class TranscriptionPipelineHandler():
         audio_clip_url = self.mh.get_audio_clip_url(audio_clip_id)
         status = self.mh.get_audio_clip_status(audio_clip_id)
         if status == "New":
-            response = self.transcription_hit_lifecycle_from_new(audio_clip_url)
+            response = self.transcription_hit_lifecycle_from_new(audio_clip_id)
             self.mh.update_audio_clip_status(audio_clip_url,response)
     
     def transcription_hit_lifecycle_from_new(self,audio_clip_id):
@@ -60,8 +60,8 @@ class TranscriptionPipelineHandler():
             else:
                 return False
             
-    def transcription_hit_lifecycle_from_assigned(self,hit_id):
-        allassignments = self.conn.get_assignments(hit_id)
+    def allhits_liveness(self):
+        #allassignments = self.conn.get_assignments(hit_id)
         #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
 
         hits = self.conn.get_all_hits()
@@ -89,7 +89,13 @@ class TranscriptionPipelineHandler():
 def main():
     audio_clip_id = 12345
     tph = TranscriptionPipelineHandler()
-    tph.audio_clip_lifecycle(audio_clip_id)
+    selection = raw_input("""Please make a selection:\n
+                                1: To create a HIT from the latest audioclip queue.
+                                2: To list the current HITs (and delete them if desired.""")
+    if selection == "1":
+        tph.audio_clip_lifecycle(audio_clip_id)
+    elif selection == "2":
+        tph.allhits_liveness()
     
 
 
