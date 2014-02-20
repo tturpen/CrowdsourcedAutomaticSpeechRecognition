@@ -41,12 +41,13 @@ class TranscriptionPipelineHandler():
         audio_clip_url = self.mh.get_audio_clip_url(audio_clip_id)
         status = self.mh.get_audio_clip_status(audio_clip_id)
         if status == "New":
-            response = self.transcription_hit_lifecycle(audio_clip_url)
+            response = self.transcription_hit_lifecycle_from_new(audio_clip_url)
             self.mh.update_audio_clip_status(audio_clip_url,response)
     
     def transcription_hit_lifecycle_from_new(self,audio_clip_url):
         #Queue is the audio clip and 
-        clip_pairs = self.mh.get_audio_clip_queue(audio_clip_url)
+        clip_queue = self.mh.get_audio_clip_queue(audio_clip_url)
+        clip_pairs = self.mh.get_audio_clip_pairs(clip_queue)
         if clip_pairs:
             hit_title = "Audio Transcription"
             question_title = "List and Transcribe" 
