@@ -22,4 +22,11 @@ class IncorrectTextFieldCount(Exception):
     def __init__(self,message):
         raise
     
+class TooManyEntries(Exception):
+    """Raise if there is an incorrect number of entries"""
+    def __init__(self,message):
+        raise
+    
+
+    
         

@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from pymongo import MongoClient
 from data.structures import Turker, AudioClip, Transcription, AudioSource, HitEntity
-from handlers.Exceptions import MultipleResultsOnIdFind
+from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries
 
 class MongoHandler(object):
     default_db_loc = 'mongodb://localhost:27017'
@@ -54,7 +54,18 @@ class MongoHandler(object):
         """All data types should have a type ID"""
         return self.type_ids.find({}) 
     
-            
+    def audio_clip_find_one(self,search,field):
+        response = [w for w in self.audio_clips.find(search,{field : 1})]
+        if len(response) > 1:
+            raise TooManyEntries
+        return response[0][field]
+    
+    def get_audio_clip_url(self,audio_clip_id):
+        return self.audio_clip_find_one({"_id" : audio_clip_id},"audio_clip_url")
+    
+    def get_audio_clip_status(self,audio_clip_id):
+        return self.audio_clip_find_one({"_id" : audio_clip_id},"Status")
+    
 def main():
     mh = MongoHandler()
     t = Turker(5)
