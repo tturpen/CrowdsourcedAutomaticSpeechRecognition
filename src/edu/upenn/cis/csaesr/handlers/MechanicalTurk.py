@@ -94,9 +94,13 @@ class HitHandler():
         keywords = "audio, transcription"
         html_head = self.html_head.replace(self.html_tags["title"],hit_title).replace(self.html_tags["description"],description)
         html = html_head
+        count = 0
         for acurl,acid in audio_clip_urls:
-            question = self.html_question.replace(self.html_tags["audio_url"],acurl).replace(self.html_tags["audioclip_id"],str(acid))
+            question = self.html_question.replace(self.html_tags["audio_url"],acurl)
+            question = question.replace(self.html_tags["audioclip_id"],str(acid))
+            question = question.replace("${count}",str(count))
             html += question
+            count += 1
         
         html += self.html_tail
         html_question = HTMLQuestion(html,800)
@@ -111,8 +115,8 @@ class HitHandler():
         except MTurkRequestError as e:
             if e.reason != "OK":
                 raise 
-            else: return e
-        return True
+            else: return False
+        return False
         
         
     def make_question_form_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,

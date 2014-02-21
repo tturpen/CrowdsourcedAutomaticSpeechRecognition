@@ -42,15 +42,17 @@ class TranscriptionPipelineHandler():
         status = self.mh.get_audio_clip_status(audio_clip_id)
         if status == "New":
             self.mh.queue_clip(audio_clip_id, priority, max_queue_size)
-            response = self.transcription_hit_lifecycle_from_new(audio_clip_id)
+            response = self.audio_clip_lifecycle_from_queued_to_hit()
         elif status == "Queued":
-            response = self.transcription_hit_lifecycle_from_new(audio_clip_id)
+            response = self.audio_clip_lifecycle_from_queued_to_hit()
         elif status == "Hit":
             print("In hit: %s"%audio_clip_url)
 
     
-    def transcription_hit_lifecycle_from_new(self,audio_clip_id):
-        #Queue is the audio clip and 
+    def audio_clip_lifecycle_from_queued_to_hit(self):
+        """Take queued audio clips from the audio clip queue
+            put them in a hit and create the hit.
+            If successful, update the audio clip status."""
         clip_queue = self.mh.get_audio_clip_queue()
         clip_pairs = self.mh.get_audio_clip_pairs(clip_queue)
         if clip_pairs:
@@ -66,6 +68,17 @@ class TranscriptionPipelineHandler():
                 return self.mh.update_audio_clip_status(audio_clip_ids,"Hit")
             else:
                 return False
+            
+    def audio_clip_lifecycle_from_hit_to_assigned(self):
+        """Check all assignments for audio clip IDs.
+            Update the audio clips."""
+        hits = self.conn.get_all_hits()
+        for hit in hits:
+            hit_id = hit.HITId
+            assignments = self.conn.get_assignments(hit_id)
+            for assignment in assignments:
+                print(assignment) 
+            
             
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
@@ -104,6 +117,8 @@ def main():
         tph.audio_clip_lifecycle(audio_clip_id)
     elif selection == "2":
         tph.allhits_liveness()
+    elif selection == "3":
+        tph.audio_clip_lifecycle_from_hit_to_assigned()
     
 
 
