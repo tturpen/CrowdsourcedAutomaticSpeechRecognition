@@ -102,19 +102,23 @@ class TranscriptionPipelineHandler():
             hit_id = hit.HITId
             assignments = self.conn.get_assignments(hit_id)
             for assignment in assignments:                
-                transcription_pairs = self.ah.get_assignment_submitted_transcriptions(assignment)
+                transcription_dicts = self.ah.get_assignment_submitted_transcriptions(assignment)
                 self.mh.create_assignment_document(assignment,
-                                                   [w[0] for w in transcription_pairs],
+                                                   [w["audio_clip_id"] for w in transcription_dicts],
                                                    "Submitted")
-            self.mh.update_transcription_hit_status(hit_id,"Submitted")
-            print(transcription_pairs)
+                for transcription in transcription_dicts:
+                    self.mh.update_transcription(transcription,"Submitted")
+                    self.mh.update_audio_clip_status([transcription["audio_clip_id"]], "Submitted")
+            if assignments:
+                self.mh.update_transcription_hit_status(hit_id,"Submitted")
+            print(transcription_dicts)
             
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
         #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
 
         hits = self.conn.get_all_hits()
-        clip_id = 12345
+        clip_id = "12345"
         for hit in hits:
             hit_id = hit.HITId
             print("Submitted transcriptions for %d given hitID: %s "%(clip_id,hit_id))

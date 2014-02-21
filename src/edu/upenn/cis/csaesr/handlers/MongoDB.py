@@ -30,7 +30,7 @@ class MongoHandler(object):
         self.audio_sources = self.db.audio#The full audio files
         self.audio_clips = self.db.audio_clips#portions of the full audio files
         self.audio_clip_queue = self.db.audio_clip_queue#queue of the audio clips
-        self.transcripts = self.db.transcripts
+        self.transcriptions = self.db.transcriptions
         self.transcription_hits = self.db.transcription_hits
         self.disfluency_hits = self.db.disfluency_hits
         self.second_pass_hits = self.db.second_pass_hits
@@ -140,6 +140,20 @@ class MongoHandler(object):
         self.logger.info("Created Assignment document, assignment ID(%s) "%assignment_id)
         return True
     
+    def update_transcription(self,transcription,status):
+        self.transcriptions.update({"audio_clip_id": transcription["audio_clip_id"],
+                                    "assignment_id": transcription["assignment_id"]},
+                                   {"assignment_id": transcription["assignment_id"],
+                                    "audio_clip_id": transcription["audio_clip_id"],
+                                    "transcription": transcription["transcription"],
+                                    "worker_id": transcription["worker_id"],
+                                    "status" : status},
+                                   upsert = True)
+        self.logger.info("Updated transcription w/ audio clip(%s) in assignment(%s) for worker (%s)"\
+                         %(transcription["audio_clip_id"],transcription["assignment_id"],\
+                           transcription["worker_id"]))
+        
+        
     def update_transcription_hit_status(self,hit_id,new_status):
         self.transcription_hits.update({"_id":hit_id},  {"$set" : {"status" : new_status}}  )   
         self.logger.info("Updated transcription hit(%s) status to: %s"%(hit_id,new_status))

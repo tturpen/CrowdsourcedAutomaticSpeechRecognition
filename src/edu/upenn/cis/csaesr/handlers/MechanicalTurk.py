@@ -64,7 +64,11 @@ class AssignmentHandler():
             for question_form_answer in result_set:
                 if len(question_form_answer.fields) != 1:
                     raise IncorrectTextFieldCount
-                response.append((question_form_answer.qid,question_form_answer.fields[0]))
+                response.append({"audio_clip_id": question_form_answer.qid,
+                                 "assignment_id": assignment.AssignmentId,
+                                 "transcription": question_form_answer.fields[0],                                    
+                                 "worker_id" : assignment.WorkerId,
+                                 })
         self.logger.info("Retrieved transcriptions for assignment(%s)"%(assignment))
         return response
     
