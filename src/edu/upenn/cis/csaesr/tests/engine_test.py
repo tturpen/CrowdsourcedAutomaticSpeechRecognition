@@ -17,9 +17,29 @@ from handlers.MechanicalTurk import AssignmentHandler, TurkerHandler, HitHandler
 from handlers.MongoDB import MongoHandler
 from data.structures import TranscriptionHit
 
+import logging
 import os
+
 HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
+
+#Init Logger
+logger = logging.getLogger("transcription_engine")
+logger.setLevel(logging.DEBUG)
+#write logs to file
+fh = logging.FileHandler("engine_test.log")
+fh.setLevel(logging.DEBUG)
+#console handler to write to console
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+#format for logging
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+#Add the handlers to the logger
+logger.addHandler(fh)
+logger.addHandler(ch)
+ 
 class TranscriptionPipelineHandler():
     def __init__(self):
         aws_id = os.environ['AWS_ACCESS_KEY_ID']
@@ -69,6 +89,7 @@ class TranscriptionPipelineHandler():
                 hit_id = response.HITId
                 hit_type_id = response.HITTypeId
                 self.mh.update_transcription_hit_status(hit_id,hit_type_id,clip_queue,"New")        
+                logger.info("Successfully created HIT: %s"%hit_id)
                 return self.mh.update_audio_clip_status(audio_clip_ids,"Hit")
             else:
                 return False

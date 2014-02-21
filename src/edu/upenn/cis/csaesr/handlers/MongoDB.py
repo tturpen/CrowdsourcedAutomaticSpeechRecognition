@@ -18,6 +18,7 @@ from data.structures import Turker, AudioClip, Transcription, AudioSource, HitEn
 from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries
 from time import time
 from collections import defaultdict
+import logging
 
 class MongoHandler(object):
     default_db_loc = 'mongodb://localhost:27017'
@@ -35,6 +36,9 @@ class MongoHandler(object):
         self.second_pass_hits = self.db.second_pass_hits
         self.turkers = self.db.turkers
         self.type_ids = self.db.type_ids
+        
+        self.logger = logging.getLogger("transcription_engine.mongodb_handler")
+        self.logger.info("creating")
         
     def insert_entity(self,entity):
         entry = entity.get_mongo_entry()
@@ -88,17 +92,21 @@ class MongoHandler(object):
         for clip in non_none:
             if  time() - clip["processing"] > self.queue_revive_time:
                 self.audio_clip_queue.update({"_id":clip["_id"]}, {"$set" : {"processing" : None}})  
+        self.logger.info("Finished reviving audio clip queue.")
     
     def update_audio_clip_queue(self,clip_queue):
         """Remove the audio clip entries from the clip queue"""
         for clip in clip_queue:
-            self.audio_clip_queue.remove({"_id":clip["_id"]})       
+            self.audio_clip_queue.remove({"_id":clip["_id"]})      
+        self.logger.info("Finished updating audio clip queue") 
             
     def update_audio_clip_status(self,clip_id_list,new_status):
         if type(clip_id_list) != list:
+            self.logger.error("Error updating audio clip(%s)"%clip_id_list)
             raise IOError
         for clip_id in clip_id_list:
             self.audio_clips.update({"_id":clip_id},  {"$set" : {"status" : new_status}}  )   
+        self.logger.info("Updated audio clip status for: %s"%clip_id_list)
         return True
     
     def update_transcription_hit_status(self,hit_id,hit_type_id,clip_queue,new_status):
@@ -111,6 +119,7 @@ class MongoHandler(object):
                                         "clips" : clips,
                                         "status": new_status},
                                        upsert = True)
+        self.logger.info("Updated transcription hit %s "%hit_id)
         return True
     
     def remove_transcription_hit(self,hit_id):
@@ -128,6 +137,7 @@ class MongoHandler(object):
                               },
                              upsert = True)
         self.update_audio_clip_status([audio_clip_id], "Queued")
+        self.logger.info("Queued clip: %s "%audio_clip_id)
         
     def get_audio_clip_queue(self):
         """Insert the audio clip by id into the queue.
