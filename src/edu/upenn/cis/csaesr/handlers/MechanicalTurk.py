@@ -15,10 +15,12 @@ from boto.mturk.connection import MTurkConnection, MTurkRequestError
 from boto.mturk.question import ExternalQuestion, QuestionForm, Overview, HTMLQuestion, QuestionContent, FormattedContent, FreeTextAnswer, AnswerSpecification, Question
 from handlers.Exceptions import IncorrectTextFieldCount
 import os
+import logging
 
 class AssignmentHandler():
     def __init__(self,connection):
         self.conn = connection
+        self.logger = logging.getLogger("transcription_engine.mechanicalturk_handler")
         
     def approve_assignment(self,assignment_id,feedback=None):
         self.conn.approve_assignment(assignment_id, feedback)
@@ -41,9 +43,26 @@ class AssignmentHandler():
                         if len(question_form_answer.fields) != 1:
                             raise IncorrectTextFieldCount
                         response.append(question_form_answer.fields[0])
+        self.logger.info("Retrieved transcription(%s) for audio clip(%s)"%(response,audio_clip_id))
         return response
-         
-        
+    
+    def get_all_submitted_transcriptions(self,hit_id):
+        """Given the hit_id and the audio clip id, find all transcriptions
+            in the submitted assignments"""
+        allassignments = self.conn.get_assignments(hit_id)
+        response = []
+        assignment_ids = []
+        for assignment in allassignments:
+            assignment_ids.append(assignment)
+            for result_set in assignment.answers:
+                for question_form_answer in result_set:
+                    if len(question_form_answer.fields) != 1:
+                        raise IncorrectTextFieldCount
+                    response.append((question_form_answer.qid,question_form_answer.fields[0]))
+        self.logger.info("Retrieved transcriptions for assignment(%s)"%(hit_id))
+        return response
+    
+    
 class TurkerHandler():
     def __init__(self,connection):
         self.conn = connection

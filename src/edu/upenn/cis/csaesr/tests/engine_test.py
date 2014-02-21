@@ -100,10 +100,8 @@ class TranscriptionPipelineHandler():
         hits = self.conn.get_all_hits()
         for hit in hits:
             hit_id = hit.HITId
-            assignments = self.conn.get_assignments(hit_id)
-            for assignment in assignments:
-                print(assignment) 
-            
+            transcription_pairs = self.ah.get_all_submitted_transcriptions(hit_id)
+            print(transcription_pairs)
             
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
@@ -137,7 +135,7 @@ def main():
     #----------------------- selection = raw_input("""Please make a selection:\n
                                 # 1: To create a HIT from the latest audioclip queue.
                                 # 2: To list the current HITs (and delete them if desired.""")
-    selection = "1"
+    selection = "3"
     if selection == "1":
         tph.audio_clip_lifecycle(audio_clip_id)
     elif selection == "2":

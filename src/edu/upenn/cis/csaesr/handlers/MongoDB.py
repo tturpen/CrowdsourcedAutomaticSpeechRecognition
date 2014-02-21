@@ -38,7 +38,6 @@ class MongoHandler(object):
         self.type_ids = self.db.type_ids
         
         self.logger = logging.getLogger("transcription_engine.mongodb_handler")
-        self.logger.info("creating")
         
     def insert_entity(self,entity):
         entry = entity.get_mongo_entry()
