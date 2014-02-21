@@ -88,19 +88,25 @@ class TranscriptionPipelineHandler():
                 audio_clip_ids = [w["audio_clip_id"] for w in clip_queue]    
                 hit_id = response.HITId
                 hit_type_id = response.HITTypeId
-                self.mh.update_transcription_hit_status(hit_id,hit_type_id,clip_queue,"New")        
+                self.mh.create_transcription_hit_document(hit_id,hit_type_id,clip_queue,"New")        
                 logger.info("Successfully created HIT: %s"%hit_id)
                 return self.mh.update_audio_clip_status(audio_clip_ids,"Hit")
             else:
                 return False
             
-    def audio_clip_lifecycle_from_hit_to_assigned(self):
+    def audio_clip_lifecycle_from_hit_to_submitted(self):
         """Check all assignments for audio clip IDs.
             Update the audio clips."""
         hits = self.conn.get_all_hits()
         for hit in hits:
             hit_id = hit.HITId
-            transcription_pairs = self.ah.get_all_submitted_transcriptions(hit_id)
+            assignments = self.conn.get_assignments(hit_id)
+            for assignment in assignments:                
+                transcription_pairs = self.ah.get_assignment_submitted_transcriptions(assignment)
+                self.mh.create_assignment_document(assignment,
+                                                   [w[0] for w in transcription_pairs],
+                                                   "Submitted")
+            self.mh.update_transcription_hit_status(hit_id,"Submitted")
             print(transcription_pairs)
             
     def allhits_liveness(self):
@@ -141,7 +147,7 @@ def main():
     elif selection == "2":
         tph.allhits_liveness()
     elif selection == "3":
-        tph.audio_clip_lifecycle_from_hit_to_assigned()
+        tph.audio_clip_lifecycle_from_hit_to_submitted()
     
 
 

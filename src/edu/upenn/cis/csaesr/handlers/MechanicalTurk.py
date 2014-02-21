@@ -47,21 +47,26 @@ class AssignmentHandler():
         return response
     
     def get_all_submitted_transcriptions(self,hit_id):
-        """Given the hit_id and the audio clip id, find all transcriptions
-            in the submitted assignments"""
+        """Given the hit_id find all transcriptions
+            in the submitted assignments."""
         allassignments = self.conn.get_assignments(hit_id)
         response = []
         assignment_ids = []
         for assignment in allassignments:
-            assignment_ids.append(assignment)
-            for result_set in assignment.answers:
-                for question_form_answer in result_set:
-                    if len(question_form_answer.fields) != 1:
-                        raise IncorrectTextFieldCount
-                    response.append((question_form_answer.qid,question_form_answer.fields[0]))
-        self.logger.info("Retrieved transcriptions for assignment(%s)"%(hit_id))
+            assignment_ids.append(assignment.AssignmentId)
+            response.extend(self.get_assignment_submitted_transcriptions(assignment))
         return response
     
+    def get_assignment_submitted_transcriptions(self,assignment):
+        """Given the assignment return all the transcriptions."""
+        response = []
+        for result_set in assignment.answers:
+            for question_form_answer in result_set:
+                if len(question_form_answer.fields) != 1:
+                    raise IncorrectTextFieldCount
+                response.append((question_form_answer.qid,question_form_answer.fields[0]))
+        self.logger.info("Retrieved transcriptions for assignment(%s)"%(assignment))
+        return response
     
 class TurkerHandler():
     def __init__(self,connection):

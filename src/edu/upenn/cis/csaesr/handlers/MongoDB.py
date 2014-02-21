@@ -36,6 +36,7 @@ class MongoHandler(object):
         self.second_pass_hits = self.db.second_pass_hits
         self.turkers = self.db.turkers
         self.type_ids = self.db.type_ids
+        self.assignments = self.db.assignments
         
         self.logger = logging.getLogger("transcription_engine.mongodb_handler")
         
@@ -108,7 +109,7 @@ class MongoHandler(object):
         self.logger.info("Updated audio clip status for: %s"%clip_id_list)
         return True
     
-    def update_transcription_hit_status(self,hit_id,hit_type_id,clip_queue,new_status):
+    def create_transcription_hit_document(self,hit_id,hit_type_id,clip_queue,new_status):
         if type(clip_queue) != list:
             raise IOError
         clips = [w["audio_clip_id"] for w in clip_queue]
@@ -119,6 +120,29 @@ class MongoHandler(object):
                                         "status": new_status},
                                        upsert = True)
         self.logger.info("Updated transcription hit %s "%hit_id)
+        return True
+    
+    def create_assignment_document(self,assignment,transcription_ids,status):
+        """Create the assignment document with the transcription ids.
+            AssignmentStatus is the AMT assignment status.
+            status is the engine lifecycle status."""
+        assignment_id = assignment.AssignmentId
+        self.assignments.update({"_id":assignment_id},
+                                        {"_id":assignment_id,
+                                         "AcceptTime": assignment.AcceptTime,
+                                         "AssignmentStatus" : assignment.AssignmentStatus,
+                                         "AutoApprovalTime" : assignment.AutoApprovalTime,
+                                         "hit_id" : assignment.HITId,
+                                         "worker_id" : assignment.WorkerId,
+                                         "transcriptions" : transcription_ids,
+                                         "status": status},
+                                        upsert = True)
+        self.logger.info("Created Assignment document, assignment ID(%s) "%assignment_id)
+        return True
+    
+    def update_transcription_hit_status(self,hit_id,new_status):
+        self.transcription_hits.update({"_id":hit_id},  {"$set" : {"status" : new_status}}  )   
+        self.logger.info("Updated transcription hit(%s) status to: %s"%(hit_id,new_status))
         return True
     
     def remove_transcription_hit(self,hit_id):
