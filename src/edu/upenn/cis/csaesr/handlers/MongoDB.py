@@ -100,6 +100,21 @@ class MongoHandler(object):
         for clip_id in clip_id_list:
             self.audio_clips.update({"_id":clip_id},  {"$set" : {"status" : new_status}}  )   
         return True
+    
+    def update_transcription_hit_status(self,hit_id,hit_type_id,clip_queue,new_status):
+        if type(clip_queue) != list:
+            raise IOError
+        clips = [w["audio_clip_id"] for w in clip_queue]
+        self.transcription_hits.update({"_id":hit_id},
+                                       {"_id":hit_id,
+                                        "hit_type_id": hit_type_id,
+                                        "clips" : clips,
+                                        "status": new_status},
+                                       upsert = True)
+        return True
+    
+    def remove_transcription_hit(self,hit_id):
+        self.transcription_hits.remove({"_id":hit_id})
                 
     def get_audio_clip_pairs(self,clip_queue):
         return [(self.get_audio_clip_url(w["audio_clip_id"]),w["audio_clip_id"]) for w in clip_queue]

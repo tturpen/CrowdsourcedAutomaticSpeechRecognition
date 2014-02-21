@@ -11,7 +11,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from boto.mturk.connection import MTurkConnection, HIT, MTurkRequestError
+from boto.mturk.connection import MTurkConnection, HIT, MTurkRequestError, ResultSet
 from boto.mturk.question import ExternalQuestion, QuestionForm, Overview
 from handlers.MechanicalTurk import AssignmentHandler, TurkerHandler, HitHandler
 from handlers.MongoDB import MongoHandler
@@ -62,9 +62,13 @@ class TranscriptionPipelineHandler():
             keywords = "audio, transcription, audio transcription"
             response = self.hh.make_html_transcription_HIT(clip_pairs,hit_title,
                                          question_title, description, keywords)
-            if response:
+            if type(response) == ResultSet and len(response) == 1 and response[0].IsValid:
+                response = response[0]
                 self.mh.update_audio_clip_queue(clip_queue)
-                audio_clip_ids = [w["audio_clip_id"] for w in clip_queue]            
+                audio_clip_ids = [w["audio_clip_id"] for w in clip_queue]    
+                hit_id = response.HITId
+                hit_type_id = response.HITTypeId
+                self.mh.update_transcription_hit_status(hit_id,hit_type_id,clip_queue,"New")        
                 return self.mh.update_audio_clip_status(audio_clip_ids,"Hit")
             else:
                 return False
@@ -93,9 +97,9 @@ class TranscriptionPipelineHandler():
             if raw_input("Remove hit?(y/n)") == "y":
                 try:
                     self.conn.disable_hit(hit.HITId)
+                    self.mh.remove_transcription_hit(hit_id)
                 except MTurkRequestError as e:
-                    if e.reason != "OK":
-                        raise
+                    raise e
         
 #------------------------------------------------------------------------------ 
             #-------------------------------- allhits = self.conn.get_all_hits()
