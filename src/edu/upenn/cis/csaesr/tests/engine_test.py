@@ -113,6 +113,19 @@ class TranscriptionPipelineHandler():
                 self.mh.update_transcription_hit_status(hit_id,"Submitted")
             print(transcription_dicts)
             
+    def audio_clip_lifecycle_from_submitted_to_approved(self):
+        """For all the submitted audio clips, if an audio clip
+            has a transcription, check the reference transcription,
+            if the WER is acceptable, update the audio clip status"""
+        audio_clips = self.mh.get_all_audio_clips_by_status("Submitted")
+        for clip in audio_clips:
+            reference_transcription = clip["reference_transcription"]
+            transcriptions = self.mh.get_transcriptions(clip["_id"])
+            for transcription in transcriptions:
+                
+
+            
+            
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
         #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
