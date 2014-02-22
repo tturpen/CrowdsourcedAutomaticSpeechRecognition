@@ -14,8 +14,8 @@
 
 def main():
     ref = "Humpty dumpty broke his head."
-    hyp = "Humpty broke his nose."
-    print(wer_2(ref.split(),hyp.split()))
+    hyp = "Humpty broke his nose on the sidewalk by the church."
+    print(wer(ref.split(),hyp.split()))
     
 def wer(ref,hyp):
     d = []
