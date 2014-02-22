@@ -16,12 +16,14 @@ from boto.mturk.question import ExternalQuestion, QuestionForm, Overview
 from handlers.MechanicalTurk import AssignmentHandler, TurkerHandler, HitHandler
 from handlers.MongoDB import MongoHandler
 from data.structures import TranscriptionHit
+from util.calc import wer
 
 import logging
 import os
 
 HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
+WER_THRESHOLD = 50
 
 #Init Logger
 logger = logging.getLogger("transcription_engine")
@@ -106,7 +108,7 @@ class TranscriptionPipelineHandler():
                 transcription_dicts = self.ah.get_assignment_submitted_transcriptions(assignment)
 
                 for transcription in transcription_dicts:
-                    self.mh.update_transcription(transcription,"Submitted")
+                    self.mh.update_transcription_status(transcription,"Submitted")
                     self.mh.update_audio_clip_status([transcription["audio_clip_id"]], "Submitted")
                     transcription_ids.append(self.mh.get_transcription({"audio_clip_id" : transcription["audio_clip_id"],
                                                                         "assignment_id" : transcription["assignment_id"]},
@@ -126,7 +128,7 @@ class TranscriptionPipelineHandler():
         audio_clips = self.mh.get_all_audio_clips_by_status("Submitted")
         for clip in audio_clips:
             reference_transcription = clip["reference_transcription"]
-            transcriptions = self.mh.get_transcriptions(clip["_id"])
+            transcriptions = self.mh.get_transcriptions("audio_clip_id",[clip["_id"]])
             #for transcription in transcriptions:
             
     def assignment_submitted_approved(self):
@@ -137,8 +139,25 @@ class TranscriptionPipelineHandler():
             have an acceptable WER, approve the assignment and update
             the audio clips and transcriptions."""
         assignments = self.mh.get_all_assignments_by_status("Submitted")
+        approved = True
         for assignment in assignments:
             transcription_ids = assignment["transcriptions"]
+            transcriptions = self.mh.get_transcriptions("_id",transcription_ids)
+            for transcription in transcriptions:
+                reference_id = self.mh.get_audio_clip({"_id":transcription["audio_clip_id"]},"reference")
+                if reference_id:
+                    reference_transcription = self.mh.get_reference_transcription({"_id": reference_id},
+                                                                                  "transcription")
+                    if reference_transcription:
+                        transcription_wer = wer(reference_transcription,transcription["transcription"])
+                        if transcription_wer < WER_THRESHOLD:
+                            self.mh.update_transcription_status(transcription,"Confirmed")
+                            logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
+                        else:
+                            approved = False
+            if approved:
+                self.mh.update_assignment_status(assignment,"Approved")
+                         
             print(transcription_ids)
                 
         
@@ -178,7 +197,7 @@ def main():
     #----------------------- selection = raw_input("""Please make a selection:\n
                                 # 1: To create a HIT from the latest audioclip queue.
                                 # 2: To list the current HITs (and delete them if desired.""")
-    selection = "3"
+    selection = "4"
     if selection == "1":
         tph.audio_clip_lifecycle(audio_clip_id)
     elif selection == "2":
