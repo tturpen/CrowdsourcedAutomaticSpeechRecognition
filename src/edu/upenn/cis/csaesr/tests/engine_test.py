@@ -98,30 +98,50 @@ class TranscriptionPipelineHandler():
         """Check all assignments for audio clip IDs.
             Update the audio clips."""
         hits = self.conn.get_all_hits()
+        transcription_ids = []
         for hit in hits:
             hit_id = hit.HITId
             assignments = self.conn.get_assignments(hit_id)
             for assignment in assignments:                
                 transcription_dicts = self.ah.get_assignment_submitted_transcriptions(assignment)
-                self.mh.create_assignment_document(assignment,
-                                                   [w["audio_clip_id"] for w in transcription_dicts],
-                                                   "Submitted")
+
                 for transcription in transcription_dicts:
                     self.mh.update_transcription(transcription,"Submitted")
                     self.mh.update_audio_clip_status([transcription["audio_clip_id"]], "Submitted")
+                    transcription_ids.append(self.mh.get_transcription({"audio_clip_id" : transcription["audio_clip_id"],
+                                                                        "assignment_id" : transcription["assignment_id"]},
+                                                                       "_id"))
+                self.mh.create_assignment_document(assignment,
+                                                   transcription_ids,
+                                                   "Submitted")
             if assignments:
                 self.mh.update_transcription_hit_status(hit_id,"Submitted")
             print(transcription_dicts)
             
     def audio_clip_lifecycle_from_submitted_to_approved(self):
-        """For all the submitted audio clips, if an audio clip
+        """TODO tt- I got a little ahead of myself, need to implement AssignmentSubmittedApproved first
+            For all the submitted audio clips, if an audio clip
             has a transcription, check the reference transcription,
             if the WER is acceptable, update the audio clip status"""
         audio_clips = self.mh.get_all_audio_clips_by_status("Submitted")
         for clip in audio_clips:
             reference_transcription = clip["reference_transcription"]
             transcriptions = self.mh.get_transcriptions(clip["_id"])
-            for transcription in transcriptions:
+            #for transcription in transcriptions:
+            
+    def assignment_submitted_approved(self):
+        """For all submitted assignments,
+            if an answered question has a reference transcription,
+            check the WER.
+            If all the answered questions with reference transcriptions
+            have an acceptable WER, approve the assignment and update
+            the audio clips and transcriptions."""
+        assignments = self.mh.get_all_assignments_by_status("Submitted")
+        for assignment in assignments:
+            transcription_ids = assignment["transcriptions"]
+            print(transcription_ids)
+                
+        
                 
 
             
@@ -165,6 +185,8 @@ def main():
         tph.allhits_liveness()
     elif selection == "3":
         tph.audio_clip_lifecycle_from_hit_to_submitted()
+    elif selection == "4":
+        tph.assignment_submitted_approved()
     
 
 

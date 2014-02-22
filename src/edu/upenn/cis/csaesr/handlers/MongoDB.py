@@ -77,6 +77,9 @@ class MongoHandler(object):
     def get_all_audio_clips_by_status(self,status):
         return self.audio_clips.find({"status":status})
     
+    def get_all_assignments_by_status(self,status):
+        return self.assignments.find({"status": status})
+    
     def get_max_queue(self,max_sizes):
         max_q = []
         for q in max_sizes:
@@ -170,6 +173,15 @@ class MongoHandler(object):
     
     def get_transcriptions(self,audio_clip_id):
         return self.transcriptions.find({"audio_clip_id":audio_clip_id})
+    
+    def get_transcription(self,search,field,refine={}):
+        response = self.transcriptions.find(search)
+        prev = False
+        for response in response:
+            if prev:
+                raise TooManyEntries
+            prev = response
+        return prev[field]
     
     def queue_clip(self,audio_clip_id,priority=1,max_queue_size=3):
         self.audio_clip_queue.update({"audio_clip_id": audio_clip_id},
