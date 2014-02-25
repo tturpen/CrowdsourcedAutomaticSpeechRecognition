@@ -27,6 +27,24 @@ class TooManyEntries(Exception):
     def __init__(self,message):
         raise
     
+class WavHandlerException(Exception):
+    """If something goes wrong with handling wav files, raise"""
+    def __init__(self,message):
+        raise
+    
+class DuplicateSentenceIds(Exception):
+    """Raise if there are duplicate sentence ids in the prompts"""
+    def __init__(self,message):
+        raise    
+    
+class PromptNotFound(Exception):
+    """Raise if a prompt for an audio source cannot be found"""
+    def __init__(self,message):
+        raise
+    
+
+
+
 
     
         

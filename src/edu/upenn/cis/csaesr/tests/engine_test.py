@@ -16,6 +16,8 @@ from boto.mturk.question import ExternalQuestion, QuestionForm, Overview
 from handlers.MechanicalTurk import AssignmentHandler, TurkerHandler, HitHandler
 from handlers.MongoDB import MongoHandler
 from data.structures import TranscriptionHit
+from handlers.Audio import WavHandler, PromptHandler
+from handlers.Exceptions import WavHandlerException, PromptNotFound
 from util.calc import wer
 
 import logging
@@ -55,6 +57,8 @@ class TranscriptionPipelineHandler():
         self.th = TurkerHandler(self.conn)
         self.hh = HitHandler(self.conn,TEMPLATE_DIR)
         self.mh = MongoHandler()
+        self.wh = WavHandler()
+        self.ph = PromptHandler()
         
     def generate_audio_HITs(self):
         pass   
@@ -156,14 +160,51 @@ class TranscriptionPipelineHandler():
                         else:
                             approved = False
             if approved:
-                self.mh.update_assignment_status(assignment,"Approved")
-                         
+                self.mh.update_assignment_status(assignment,"Approved")                         
             print(transcription_ids)
-                
-        
-                
-
             
+    def audio_source_sourced_to_clipped(self):
+        """For an audio source,
+            re-sample/confirm sampling
+            segment audio into clip/transcription pairs
+            create audio clip and reference transcription artifacts."""
+        pass
+            
+    def _bootstrap_rm_audio_source_file_to_sourced(self,file_dir,prompt_file_uri,sample_rate=16000):
+        """For an audio directory,
+            see which files are new and not an audio source already
+            """
+        prompt_dict = self.ph.get_prompts(prompt_file_uri)
+        for root, dirs, files in os.walk(file_dir):
+            for f in files:
+                system_uri = os.path.join(root,f)
+                out_uri = system_uri.strip(".sph") + ".wav"
+                out_uri = os.path.basename(out_uri)
+                out_uri = os.path.join(root,(out_uri))
+                #sph to wav
+                if not f.endswith(".wav") and not os.path.exists(out_uri):
+                    spkr = str(os.path.relpath(root,file_dir))
+                    try:
+                        self.wh.sph_to_wav(system_uri,out_uri=out_uri)
+                    except WavHandlerException as e:
+                        logger.error("Unable to create wav from sph: "+str(e))
+                        
+                if os.path.exists(out_uri) and out_uri.endswith(".wav"):
+                    #create audio source artifact
+                    prompt_id = os.path.basename(out_uri).strip(".wav").upper()
+                    encoding = ".wav"
+                    sample_rate = 16000
+                    file_size = os.stat(out_uri).st_size
+                    audio_length = self.wh.get_audio_length(out_uri)
+                    if prompt_id in prompt_dict:                        
+                        transcription_prompt = prompt_dict[prompt_id]
+                    else:
+                        #No prompt found
+                        raise PromptNotFound
+                    #TODO - tt Implement create audio source artifact 
+                    #self.mh.create_audio_source_artifact(out_uri,spkr)
+                
+                   
             
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
@@ -194,10 +235,12 @@ class TranscriptionPipelineHandler():
 def main():
     audio_clip_id = 12345
     tph = TranscriptionPipelineHandler()
+    audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/ind_trn"
+    prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
     #----------------------- selection = raw_input("""Please make a selection:\n
                                 # 1: To create a HIT from the latest audioclip queue.
                                 # 2: To list the current HITs (and delete them if desired.""")
-    selection = "4"
+    selection = "5"
     if selection == "1":
         tph.audio_clip_lifecycle(audio_clip_id)
     elif selection == "2":
@@ -206,6 +249,8 @@ def main():
         tph.audio_clip_lifecycle_from_hit_to_submitted()
     elif selection == "4":
         tph.assignment_submitted_approved()
+    elif selection == "5":
+        tph._bootstrap_rm_audio_source_file_to_sourced(audio_file_dir,prompt_file_uri)
     
 
 
