@@ -235,6 +235,8 @@ class MongoHandler(object):
     def update_audio_clip_reference_transcription(self,clip_id,reference_transcription_id):
         self.audio_clips.update({"_id":clip_id},
                                 {"$set" : {"reference_transcription_id" : reference_transcription_id}})
+        self.audio_clips.update({"_id":clip_id},
+                                {"$set" : {"status" : "Referenced"}})
         
     def update_assignment_status(self,assignment,status):
         self.assignments.update({"_id":assignment["_id"]},
