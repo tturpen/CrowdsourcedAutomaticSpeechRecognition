@@ -211,6 +211,11 @@ class MongoHandler(object):
                          %(transcription["audio_clip_id"],transcription["assignment_id"],\
                            transcription["worker_id"]))
         
+    def update_audio_source_audio_clip(self,source_id,clip_id):
+        """For the audio source given the id, set
+            the value using the document"""
+        self.audio_sources.update({"_id":source_id},{"$set": {"audio_clip_id": clip_id}})
+        
     def update_assignment_status(self,assignment,status):
         self.assignments.update({"_id":assignment["_id"]},
                                 {"$set":{"status":status}})       

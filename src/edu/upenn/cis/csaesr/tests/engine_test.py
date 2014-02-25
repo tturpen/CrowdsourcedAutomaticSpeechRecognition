@@ -227,6 +227,9 @@ class TranscriptionPipelineHandler():
                                                        http_url,
                                                        length_seconds,
                                                        disk_space)
+                    
+                    #Update the audio source
+                    self.mh.update_audio_source_audio_clip(source_id,clip_id)
                     #TODO - tt create reference transcription from prompt
                     self.mh.create_reference_transcription_artifact()
 
