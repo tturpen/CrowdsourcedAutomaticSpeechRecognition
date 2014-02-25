@@ -14,34 +14,39 @@
 class MultipleResultsOnIdFind(Exception):
     """Raise if a find on an ID returns multiple results"""
     def __init__(self,message):
-        return str("Multiple results for ID find on ID: %s"%message)
+        return self
     
 class IncorrectTextFieldCount(Exception):
     """Raise if there is an incorrect number of text fields in 
         the QuestionFormAnswer"""
     def __init__(self,message):
-        raise
+        raise self
     
 class TooManyEntries(Exception):
     """Raise if there is an incorrect number of entries"""
     def __init__(self,message):
-        raise
+        raise self
     
 class WavHandlerException(Exception):
     """If something goes wrong with handling wav files, raise"""
     def __init__(self,message):
-        raise
+        raise self
     
 class DuplicateSentenceIds(Exception):
     """Raise if there are duplicate sentence ids in the prompts"""
     def __init__(self,message):
-        raise    
+        raise self 
     
 class PromptNotFound(Exception):
     """Raise if a prompt for an audio source cannot be found"""
     def __init__(self,message):
-        raise
+        raise self
     
+class DuplicateArtifactException(Exception):
+    """Raise if a prompt for an audio source cannot be found"""
+    def __init__(self,message):
+        raise self
+
 
 
 

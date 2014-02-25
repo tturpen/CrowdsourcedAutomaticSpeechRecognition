@@ -19,6 +19,7 @@ from data.structures import TranscriptionHit
 from handlers.Audio import WavHandler, PromptHandler
 from handlers.Exceptions import WavHandlerException, PromptNotFound
 from util.calc import wer
+from shutil import copyfile
 
 import logging
 import os
@@ -170,7 +171,9 @@ class TranscriptionPipelineHandler():
             create audio clip and reference transcription artifacts."""
         pass
             
-    def _bootstrap_rm_audio_source_file_to_sourced(self,file_dir,prompt_file_uri,sample_rate=16000):
+    def _bootstrap_rm_audio_source_file_to_sourced(self,file_dir,prompt_file_uri,
+                                                   base_clip_dir,sample_rate=16000,
+                                                   http_base_url = "http://www.cis.upenn.edu/~tturpen/wavs/"):
         """For an audio directory,
             see which files are new and not an audio source already
             """
@@ -181,9 +184,9 @@ class TranscriptionPipelineHandler():
                 out_uri = system_uri.strip(".sph") + ".wav"
                 out_uri = os.path.basename(out_uri)
                 out_uri = os.path.join(root,(out_uri))
+                spkr_id = str(os.path.relpath(root,file_dir))
                 #sph to wav
                 if not f.endswith(".wav") and not os.path.exists(out_uri):
-                    spkr = str(os.path.relpath(root,file_dir))
                     try:
                         self.wh.sph_to_wav(system_uri,out_uri=out_uri)
                     except WavHandlerException as e:
@@ -191,20 +194,43 @@ class TranscriptionPipelineHandler():
                         
                 if os.path.exists(out_uri) and out_uri.endswith(".wav"):
                     #create audio source artifact
+                    wav_filename = os.path.basename(out_uri)
                     prompt_id = os.path.basename(out_uri).strip(".wav").upper()
                     encoding = ".wav"
                     sample_rate = 16000
-                    file_size = os.stat(out_uri).st_size
-                    audio_length = self.wh.get_audio_length(out_uri)
+                    disk_space = os.stat(out_uri).st_size
+                    length_seconds = self.wh.get_audio_length(out_uri)
                     if prompt_id in prompt_dict:                        
                         transcription_prompt = prompt_dict[prompt_id]
                     else:
                         #No prompt found
                         raise PromptNotFound
-                    #TODO - tt Implement create audio source artifact 
-                    #self.mh.create_audio_source_artifact(out_uri,spkr)
-                
-                   
+                    source_id = self.mh.create_audio_source_artifact(out_uri,
+                                                         disk_space,
+                                                         length_seconds,
+                                                         sample_rate,
+                                                         spkr_id,
+                                                         encoding)
+                    #create audio clip artifact
+                    audio_clip_uri = os.path.join(base_clip_dir,spkr_id,wav_filename)                    
+                    clip_dir = os.path.dirname(audio_clip_uri)
+                    if not os.path.exists(clip_dir):
+                        os.makedirs(clip_dir)
+                    if not os.path.exists(audio_clip_uri):
+                        copyfile(out_uri,audio_clip_uri)     
+                    #http_url
+                    http_url = os.path.join(http_base_url,spkr_id,wav_filename)                   
+                    clip_id = self.mh.create_audio_clip_artifact(source_id,
+                                                       0,
+                                                       -1,
+                                                       audio_clip_uri,
+                                                       http_url,
+                                                       length_seconds,
+                                                       disk_space)
+                    #TODO - tt create reference transcription from prompt
+                    self.mh.create_reference_transcription_artifact()
+
+
             
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
@@ -237,6 +263,7 @@ def main():
     tph = TranscriptionPipelineHandler()
     audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/ind_trn"
     prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
+    base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
     #----------------------- selection = raw_input("""Please make a selection:\n
                                 # 1: To create a HIT from the latest audioclip queue.
                                 # 2: To list the current HITs (and delete them if desired.""")
@@ -250,7 +277,9 @@ def main():
     elif selection == "4":
         tph.assignment_submitted_approved()
     elif selection == "5":
-        tph._bootstrap_rm_audio_source_file_to_sourced(audio_file_dir,prompt_file_uri)
+        tph._bootstrap_rm_audio_source_file_to_sourced(audio_file_dir,
+                                                       prompt_file_uri,
+                                                       base_clip_dir)
     
 
 

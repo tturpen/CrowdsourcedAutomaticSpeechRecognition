@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from pymongo import MongoClient
 from data.structures import Turker, AudioClip, Transcription, AudioSource, HitEntity
-from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries
+from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries, DuplicateArtifactException
 from time import time
 from collections import defaultdict
 import logging
@@ -147,6 +147,56 @@ class MongoHandler(object):
         self.logger.info("Created Assignment document, assignment ID(%s) "%assignment_id)
         return True
     
+    def create_audio_source_artifact(self,uri,disk_space,length_seconds,
+                                     sample_rate,speaker_id,
+                                     encoding,audio_clip_id=None,status="New"):
+        """Each audio source is automatically an audio clip,
+            Therefore the reference transcription can be found
+            by referencing the audio clip assigned to this source.
+            For turkers, speaker id will be their worker id"""        
+        document = {"uri" : uri,
+                    "disk_space" : disk_space,
+                    "length_seconds" : length_seconds,
+                    "audio_clip_id" : audio_clip_id,
+                    "sample_rate" : sample_rate,
+                    "speaker_id" : speaker_id,
+                    "encoding" : encoding,
+                    "status" : status}
+        try:
+            source_id = self.get_audio_source(document,field="_id")
+        except TooManyEntries as e:
+            self.logger.error("Duplicate artifact for document: %s"%document)            
+            raise DuplicateArtifactException(document)
+        if source_id: 
+            return source_id
+        self.audio_sources.insert(document)
+        return self.get_audio_source(document,field="_id")
+        
+    def create_reference_transcription_artifact(self,audio_clip_id):
+        pass
+    
+    def create_audio_clip_artifact(self,source_id,source_start_time,source_end_time,
+                                   uri,http_url,length_seconds,
+                                   disk_space,status="Sourced"):
+        """A -1 endtime means to the end of the clip."""
+        document = {"source_id" : source_id,
+                    "source_start_time" :source_start_time,
+                    "source_end_time" : source_end_time,
+                    "uri" : uri,
+                    "http_url": http_url,
+                    "length_seconds" : length_seconds,
+                    "disk_space" : disk_space,
+                    "status" : status}
+        try:
+            clip_id = self.get_audio_clip(document,field="_id")
+        except TooManyEntries as e:
+            self.logger.error("Duplicate artifact for document: %s"%document)            
+            raise DuplicateArtifactException(document)
+        if clip_id: 
+            return clip_id
+        self.audio_clips.insert(document)
+        return self.get_audio_clip(document,field="_id")
+    
     def update_transcription_status(self,transcription,status):
         """Use secondary ID audio clip + assignment"""
         self.transcriptions.update({"audio_clip_id": transcription["audio_clip_id"],
@@ -185,7 +235,17 @@ class MongoHandler(object):
         prev = False
         for response in responses:
             if prev:
-                raise TooManyEntries
+                raise TooManyEntries("MongoHandler.get_audio_clip")
+            prev = response        
+        return prev[field] if field and prev else prev
+    
+    def get_audio_source(self,search,field=None,refine={}):
+        responses = self.audio_sources.find(search,refine)\
+                    if refine else self.audio_sources.find(search)
+        prev = False
+        for response in responses:
+            if prev:
+                raise TooManyEntries("MongoHandler.get_audio_source")
             prev = response        
         return prev[field] if field and prev else prev
     
