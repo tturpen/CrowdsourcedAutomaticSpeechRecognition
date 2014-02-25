@@ -66,11 +66,11 @@ class MongoHandler(object):
     def audio_clip_find_one(self,search,field):
         response = [w for w in self.audio_clips.find(search,{field : 1})]
         if len(response) != 1:
-            raise TooManyEntries
+            raise TooManyEntries("MongoDB.audio_clip_find_one")
         return response[0][field]
     
     def get_audio_clip_url(self,audio_clip_id):
-        return self.audio_clip_find_one({"_id" : audio_clip_id},"audio_clip_url")
+        return self.audio_clip_find_one({"_id" : audio_clip_id},"http_url")
     
     def get_audio_clip_status(self,audio_clip_id):
         return self.audio_clip_find_one({"_id" : audio_clip_id},"status")
@@ -323,8 +323,7 @@ class MongoHandler(object):
             priority = clip["priority"]
             processing = clip["processing"]
             max_size = int(clip["max_size"])
-            for i in range(max_size):
-                max_sizes[i+1].append(clip)
+            max_sizes[max_size].append(clip)
         max_q = self.get_max_queue(max_sizes)        
         for clip in max_q:
             t = time()

@@ -64,16 +64,18 @@ class TranscriptionPipelineHandler():
     def generate_audio_HITs(self):
         pass   
     
-    def audio_clip_lifecycle(self,audio_clip_id,priority=1,max_queue_size=3):    
-        audio_clip_url = self.mh.get_audio_clip_url(audio_clip_id)
-        status = self.mh.get_audio_clip_status(audio_clip_id)
-        if status == "New":
-            self.mh.queue_clip(audio_clip_id, priority, max_queue_size)
-            response = self.audio_clip_lifecycle_from_queued_to_hit()
-        elif status == "Queued":
-            response = self.audio_clip_lifecycle_from_queued_to_hit()
-        elif status == "Hit":
-            print("In hit: %s"%audio_clip_url)
+    def audio_clip_lifecycle(self,priority=1,max_queue_size=3):    
+        for audio_clip in self.mh.get_all_audio_clips_by_status("Referenced"):
+            audio_clip_id = audio_clip["_id"]
+            audio_clip_url = self.mh.get_audio_clip_url(audio_clip_id)
+            status = audio_clip["status"]
+            if status == "New" or status == "Referenced":
+                self.mh.queue_clip(audio_clip_id, priority, max_queue_size)
+                response = self.audio_clip_lifecycle_from_queued_to_hit()
+            elif status == "Queued":
+                response = self.audio_clip_lifecycle_from_queued_to_hit()
+            elif status == "Hit":
+                print("In hit: %s"%audio_clip_url)
 
     
     def audio_clip_lifecycle_from_queued_to_hit(self):
@@ -164,13 +166,6 @@ class TranscriptionPipelineHandler():
                 self.mh.update_assignment_status(assignment,"Approved")                         
             print(transcription_ids)
             
-    def audio_source_sourced_to_clipped(self):
-        """For an audio source,
-            re-sample/confirm sampling
-            segment audio into clip/transcription pairs
-            create audio clip and reference transcription artifacts."""
-        pass
-            
     def _bootstrap_rm_audio_source_file_to_clipped(self,file_dir,prompt_file_uri,
                                                    base_clip_dir,sample_rate=16000,
                                                    http_base_url = "http://www.cis.upenn.edu/~tturpen/wavs/"):
@@ -237,10 +232,6 @@ class TranscriptionPipelineHandler():
                                                                                        "Gold")
                     #Completes audio clip to Referenced
                     self.mh.update_audio_clip_reference_transcription(clip_id,transcription_id)
-                    
-
-               
-
 
             
     def allhits_liveness(self):
@@ -251,7 +242,7 @@ class TranscriptionPipelineHandler():
         clip_id = "12345"
         for hit in hits:
             hit_id = hit.HITId
-            print("Submitted transcriptions for %d given hitID: %s "%(clip_id,hit_id))
+            print("Submitted transcriptions for %s given hitID: %s "%(clip_id,hit_id))
             print(hit)
             if raw_input("Remove hit?(y/n)") == "y":
                 try:
@@ -278,9 +269,9 @@ def main():
     #----------------------- selection = raw_input("""Please make a selection:\n
                                 # 1: To create a HIT from the latest audioclip queue.
                                 # 2: To list the current HITs (and delete them if desired.""")
-    selection = "5"
+    selection = "1"
     if selection == "1":
-        tph.audio_clip_lifecycle(audio_clip_id)
+        tph.audio_clip_lifecycle()
     elif selection == "2":
         tph.allhits_liveness()
     elif selection == "3":
