@@ -171,7 +171,7 @@ class TranscriptionPipelineHandler():
             create audio clip and reference transcription artifacts."""
         pass
             
-    def _bootstrap_rm_audio_source_file_to_sourced(self,file_dir,prompt_file_uri,
+    def _bootstrap_rm_audio_source_file_to_clipped(self,file_dir,prompt_file_uri,
                                                    base_clip_dir,sample_rate=16000,
                                                    http_base_url = "http://www.cis.upenn.edu/~tturpen/wavs/"):
         """For an audio directory,
@@ -228,10 +228,18 @@ class TranscriptionPipelineHandler():
                                                        length_seconds,
                                                        disk_space)
                     
-                    #Update the audio source
+                    #Update the audio source, updates status too
                     self.mh.update_audio_source_audio_clip(source_id,clip_id)
-                    #TODO - tt create reference transcription from prompt
-                    self.mh.create_reference_transcription_artifact()
+
+                    #Create the reference transcription artifact
+                    transcription_id = self.mh.create_reference_transcription_artifact(clip_id,
+                                                                                       transcription_prompt,
+                                                                                       "Gold")
+                    #Completes audio clip to Referenced
+                    self.mh.update_audio_clip_reference_transcription(clip_id,transcription_id)
+                    
+
+               
 
 
             

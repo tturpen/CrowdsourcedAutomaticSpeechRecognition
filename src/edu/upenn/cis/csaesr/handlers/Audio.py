@@ -11,7 +11,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from subprocess import call, PIPE
+from subprocess import call, check_output
 from handlers.Exceptions import WavHandlerException, DuplicateSentenceIds
 import os
 class WavHandler(object):
@@ -62,5 +62,6 @@ class SoxHandler(object):
     """This class is an interface to the Sox audio file handler"""
     SOXI_BINARY = "soxi"
     def get_wav_audio_length(self,system_uri):
-        return call([self.SOXI_BINARY,"-D",system_uri])
+        length = float(check_output([self.SOXI_BINARY,"-D",system_uri]))
+        return length
     

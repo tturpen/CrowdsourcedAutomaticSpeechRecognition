@@ -172,12 +172,26 @@ class MongoHandler(object):
         self.audio_sources.insert(document)
         return self.get_audio_source(document,field="_id")
         
-    def create_reference_transcription_artifact(self,audio_clip_id):
-        pass
+    def create_reference_transcription_artifact(self,audio_clip_id,words,level):
+        """Create the reference transcription given the audio clip id
+            and the transcription words themselves."""
+        document = {"audio_clip_id" : audio_clip_id,
+                    "transcription" : words,
+                    "level" : level}
+        try:
+            transcription_id = self.get_reference_transcription(document,field="_id")
+        except TooManyEntries as e:
+            self.logger.error("Duplicate artifact for document: %s"%document)            
+            raise DuplicateArtifactException(document)
+        if transcription_id: 
+            return transcription_id
+        self.reference_transcriptions.insert(document)
+        return self.get_reference_transcription(document,field="_id")
     
     def create_audio_clip_artifact(self,source_id,source_start_time,source_end_time,
                                    uri,http_url,length_seconds,
-                                   disk_space,status="Sourced"):
+                                   disk_space,reference_transcription_id=None,
+                                   status="Sourced"):
         """A -1 endtime means to the end of the clip."""
         document = {"source_id" : source_id,
                     "source_start_time" :source_start_time,
@@ -186,6 +200,7 @@ class MongoHandler(object):
                     "http_url": http_url,
                     "length_seconds" : length_seconds,
                     "disk_space" : disk_space,
+                    "reference_transcription_id" : reference_transcription_id,
                     "status" : status}
         try:
             clip_id = self.get_audio_clip(document,field="_id")
@@ -215,6 +230,11 @@ class MongoHandler(object):
         """For the audio source given the id, set
             the value using the document"""
         self.audio_sources.update({"_id":source_id},{"$set": {"audio_clip_id": clip_id}})
+        self.audio_sources.update({"_id":source_id},{"$set": {"status" : "Clipped"}})
+        
+    def update_audio_clip_reference_transcription(self,clip_id,reference_transcription_id):
+        self.audio_clips.update({"_id":clip_id},
+                                {"$set" : {"reference_transcription_id" : reference_transcription_id}})
         
     def update_assignment_status(self,assignment,status):
         self.assignments.update({"_id":assignment["_id"]},
@@ -264,16 +284,17 @@ class MongoHandler(object):
             if prev:
                 raise TooManyEntries
             prev = response        
-        return prev[field] if field else prev
+        return prev[field] if field and prev else prev
     
     def get_reference_transcription(self,search,field=None,refine={}):
-        response = self.reference_transcriptions.find(search)
+        responses = self.reference_transcriptions.find(search,refine)\
+                    if refine else self.reference_transcriptions.find(search)
         prev = False
-        for response in response:
+        for response in responses:
             if prev:
                 raise TooManyEntries
             prev = response        
-        return prev[field] if field else prev
+        return prev[field] if field and prev else prev
     
     def queue_clip(self,audio_clip_id,priority=1,max_queue_size=3):
         self.audio_clip_queue.update({"audio_clip_id": audio_clip_id},
