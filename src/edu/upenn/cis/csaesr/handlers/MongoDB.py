@@ -129,7 +129,7 @@ class MongoHandler(object):
         self.logger.info("Updated transcription hit %s "%hit_id)
         return True
     
-    def create_assignment_document(self,assignment,transcription_ids,status):
+    def create_assignment_artifact(self,assignment,transcription_ids,status):
         """Create the assignment document with the transcription ids.
             AssignmentStatus is the AMT assignment status.
             status is the engine lifecycle status."""
@@ -137,7 +137,7 @@ class MongoHandler(object):
         self.assignments.update({"_id":assignment_id},
                                         {"_id":assignment_id,
                                          "AcceptTime": assignment.AcceptTime,
-                                         "AssignmentStatus" : assignment.AssignmentStatus,
+                                         "AMTAssignmentStatus" : assignment.AssignmentStatus,
                                          "AutoApprovalTime" : assignment.AutoApprovalTime,
                                          "hit_id" : assignment.HITId,
                                          "worker_id" : assignment.WorkerId,
