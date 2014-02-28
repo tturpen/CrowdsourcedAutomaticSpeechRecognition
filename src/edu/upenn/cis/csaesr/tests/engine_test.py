@@ -26,7 +26,7 @@ import os
 
 HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
-WER_THRESHOLD = 50
+WER_THRESHOLD = 4
 
 #Init Logger
 logger = logging.getLogger("transcription_engine")
@@ -65,17 +65,17 @@ class TranscriptionPipelineHandler():
         pass   
     
     def audio_clip_referenced_to_hit(self,priority=1,max_queue_size=3):    
-        for audio_clip in self.mh.get_all_audio_clips_by_status("Referenced"):
+        for audio_clip in self.mh.get_all_audio_clips_by_state("Referenced"):
             audio_clip_id = audio_clip["_id"]
             self.mh.queue_clip(audio_clip_id, priority, max_queue_size)
             response = self.audio_clip_queue_to_hit()
 
     def audio_clip_queued_to_hit(self,priority=1,max_queue_size=3):    
-        for audio_clip in self.mh.get_all_audio_clips_by_status("Queued"):
+        for audio_clip in self.mh.get_all_audio_clips_by_state("Queued"):
             audio_clip_id = audio_clip["_id"]
             response = self.audio_clip_queue_to_hit()
             #===================================================================
-            # elif status == "Hit":
+            # elif state == "Hit":
             #     print("In hit: %s"%audio_clip_url)
             #===================================================================
 
@@ -83,7 +83,7 @@ class TranscriptionPipelineHandler():
     def audio_clip_queue_to_hit(self):
         """Take queued audio clips from the audio clip queue
             put them in a hit and create the hit.
-            If successful, update the audio clip status."""
+            If successful, update the audio clip state."""
         clip_queue = self.mh.get_audio_clip_queue()
         clip_pairs = self.mh.get_audio_clip_pairs(clip_queue)
         if clip_pairs:
@@ -101,7 +101,7 @@ class TranscriptionPipelineHandler():
                 hit_type_id = response.HITTypeId
                 self.mh.create_transcription_hit_document(hit_id,hit_type_id,clip_queue,"New")        
                 logger.info("Successfully created HIT: %s"%hit_id)
-                return self.mh.update_audio_clip_status(audio_clip_ids,"Hit")
+                return self.mh.update_audio_clip_state(audio_clip_ids,"Hit")
             else:
                 return False
             
@@ -109,17 +109,16 @@ class TranscriptionPipelineHandler():
         """Check all assignments for audio clip IDs.
             Update the audio clips."""
         hits = self.conn.get_all_hits()
-        transcription_ids = []
         for hit in hits:
             transcription_dicts = [{}]
             hit_id = hit.HITId
             assignments = self.conn.get_assignments(hit_id)
-            for assignment in assignments:                
-                transcription_dicts = self.ah.get_assignment_submitted_transcriptions(assignment)
-
+            for assignment in assignments:
+                transcription_ids = []                
+                transcription_dicts = self.ah.get_assignment_submitted_transcriptions(assignment)                
                 for transcription in transcription_dicts:
-                    self.mh.update_transcription_status(transcription,"Submitted")
-                    self.mh.update_audio_clip_status([transcription["audio_clip_id"]], "Submitted")
+                    self.mh.update_transcription_state(transcription,"Submitted")
+                    self.mh.update_audio_clip_state([transcription["audio_clip_id"]], "Submitted")
                     transcription_ids.append(self.mh.get_transcription({"audio_clip_id" : transcription["audio_clip_id"],
                                                                         "assignment_id" : transcription["assignment_id"]},
                                                                        "_id"))
@@ -127,15 +126,15 @@ class TranscriptionPipelineHandler():
                                                    transcription_ids,
                                                    "Submitted")
             if assignments:
-                self.mh.update_transcription_hit_status(hit_id,"Submitted")
+                self.mh.update_transcription_hit_state(hit_id,"Submitted")
             print("Transcriptions HIT(%s) submitted assignments: %s "%(hit_id,transcription_dicts))
             
     def audio_clip_lifecycle_from_submitted_to_approved(self):
         """TODO tt- I got a little ahead of myself, need to implement AssignmentSubmittedApproved first
             For all the submitted audio clips, if an audio clip
             has a transcription, check the reference transcription,
-            if the WER is acceptable, update the audio clip status"""
-        audio_clips = self.mh.get_all_audio_clips_by_status("Submitted")
+            if the WER is acceptable, update the audio clip state"""
+        audio_clips = self.mh.get_all_audio_clips_by_state("Submitted")
         for clip in audio_clips:
             reference_transcription = clip["reference_transcription"]
             transcriptions = self.mh.get_transcriptions("audio_clip_id",[clip["_id"]])
@@ -148,26 +147,42 @@ class TranscriptionPipelineHandler():
             If all the answered questions with reference transcriptions
             have an acceptable WER, approve the assignment and update
             the audio clips and transcriptions."""
-        assignments = self.mh.get_all_assignments_by_status("Submitted")
-        approved = True
+        assignments = self.mh.get_all_assignments_by_state("Submitted")        
         for assignment in assignments:
+            denied = []
+            #If no transcriptions have references then we automatically approve the HIT
+            approved = True
             transcription_ids = assignment["transcriptions"]
             transcriptions = self.mh.get_transcriptions("_id",transcription_ids)
             for transcription in transcriptions:
-                reference_id = self.mh.get_audio_clip({"_id":transcription["audio_clip_id"]},"reference")
+                reference_id = self.mh.get_audio_clip_by_id(transcription["audio_clip_id"],"reference_transcription_id")
                 if reference_id:
                     reference_transcription = self.mh.get_reference_transcription({"_id": reference_id},
                                                                                   "transcription")
+                    new_transcription = transcription["transcription"].split(" ")
                     if reference_transcription:
-                        transcription_wer = wer(reference_transcription,transcription["transcription"])
-                        if transcription_wer < WER_THRESHOLD:
-                            self.mh.update_transcription_status(transcription,"Confirmed")
+                        transcription_wer = wer(reference_transcription,new_transcription)
+                        wer_ratio = len(reference_transcription)/2
+                        if transcription_wer < wer_ratio and wer_ratio:
+                            denied.append((reference_transcription,new_transcription))
+                            self.mh.update_transcription_state(transcription,"Confirmed")
+                            logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
+                        elif transcription_wer < WER_THRESHOLD:
+                            denied.append((reference_transcription,new_transcription))
+                            self.mh.update_transcription_state(transcription,"Confirmed")
                             logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
                         else:
                             approved = False
             if approved:
-                self.mh.update_assignment_status(assignment,"Approved")                         
+                self.mh.update_assignment_state(assignment,"Approved")    
+                for transcription in transcriptions:
+                        reference_id = self.mh.get_audio_clip({"_id":transcription["audio_clip_id"]},"reference")
+                        if not reference_id:
+                            self.mh.update_transcription_state(transcription,"Approved")
+                                          
                 print("Approved transcription ids: %s"%transcription_ids)
+            else:
+                print("Assignments not aproved %s "%denied)
             
     def _bootstrap_rm_audio_source_file_to_clipped(self,file_dir,prompt_file_uri,
                                                    base_clip_dir,sample_rate=16000,
@@ -176,8 +191,12 @@ class TranscriptionPipelineHandler():
             see which files are new and not an audio source already
             """
         prompt_dict = self.ph.get_prompts(prompt_file_uri)
+        count = 0
         for root, dirs, files in os.walk(file_dir):
             for f in files:
+                if count == 15:
+                    return
+                count += 1
                 system_uri = os.path.join(root,f)
                 out_uri = system_uri.strip(".sph") + ".wav"
                 out_uri = os.path.basename(out_uri)
@@ -226,7 +245,7 @@ class TranscriptionPipelineHandler():
                                                        length_seconds,
                                                        disk_space)
                     
-                    #Update the audio source, updates status too
+                    #Update the audio source, updates state too
                     self.mh.update_audio_source_audio_clip(source_id,clip_id)
 
                     #Create the reference transcription artifact
@@ -242,11 +261,9 @@ class TranscriptionPipelineHandler():
         #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
 
         hits = self.conn.get_all_hits()
-        clip_id = "12345"
         for hit in hits:
-            hit_id = hit.HITId
-            print("Submitted transcriptions for %s given hitID: %s "%(clip_id,hit_id))
-            print(hit)
+            hit_id = hit.HITId            
+            print("HIT ID: %s"%hit_id)
             if raw_input("Remove hit?(y/n)") == "y":
                 try:
                     self.conn.disable_hit(hit.HITId)
@@ -269,26 +286,30 @@ def main():
     audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/ind_trn"
     prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
     base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
-    selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
-                                 1: AudioSource-FileToClipped: Initialize Resource Management audio source files to queueable(Referenced) clips
+    selection = 0
+    init_clip_count = 15
+    while selection != 6:
+        selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
+                                 1: AudioSource-FileToClipped: Initialize Resource Management audio source files to %d queueable(Referenced) clips
                                  2: AudioClip-ReferencedToHit: Queue all referenced audio clips and create a HIT if the queue is full.
                                  3: AudioClip-HitToSubmitted: Check all submitted assignments for Transcriptions.
                                  4: AudioClip-SubmittedToApproved: Check all submitted clips against their reference.
                                  5: Review Current Hits
-                                 """)
-    #selection = "5"
-    if selection == "1":
-        tph._bootstrap_rm_audio_source_file_to_clipped(audio_file_dir,
-                                               prompt_file_uri,
-                                               base_clip_dir)
-    elif selection == "2":
-        tph.audio_clip_referenced_to_hit()
-    elif selection == "3":
-        tph.audio_clip_lifecycle_from_hit_to_submitted()
-    elif selection == "4":
-        tph.assignment_submitted_approved()
-    elif selection == "5":
-        tph.allhits_liveness()
+                                 6: Exit
+                                """%init_clip_count)
+        #selection = "5"
+        if selection == "1":
+            tph._bootstrap_rm_audio_source_file_to_clipped(audio_file_dir,
+                                                   prompt_file_uri,
+                                                   base_clip_dir)
+        elif selection == "2":
+            tph.audio_clip_referenced_to_hit()
+        elif selection == "3":
+            tph.audio_clip_lifecycle_from_hit_to_submitted()
+        elif selection == "4":
+            tph.assignment_submitted_approved()
+        elif selection == "5":
+            tph.allhits_liveness()
     
 
 
