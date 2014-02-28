@@ -18,6 +18,8 @@ from data.structures import Turker, AudioClip, Transcription, AudioSource, HitEn
 from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries, DuplicateArtifactException
 from time import time
 from collections import defaultdict
+from bson.objectid import ObjectId
+
 import logging
 
 class MongoHandler(object):
@@ -72,14 +74,14 @@ class MongoHandler(object):
     def get_audio_clip_url(self,audio_clip_id):
         return self.audio_clip_find_one({"_id" : audio_clip_id},"http_url")
     
-    def get_audio_clip_status(self,audio_clip_id):
-        return self.audio_clip_find_one({"_id" : audio_clip_id},"status")
+    def get_audio_clip_state(self,audio_clip_id):
+        return self.audio_clip_find_one({"_id" : audio_clip_id},"state")
     
-    def get_all_audio_clips_by_status(self,status):
-        return self.audio_clips.find({"status":status})
+    def get_all_audio_clips_by_state(self,state):
+        return self.audio_clips.find({"state":state})
     
-    def get_all_assignments_by_status(self,status):
-        return self.assignments.find({"status": status})
+    def get_all_assignments_by_state(self,state):
+        return self.assignments.find({"state": state})
     
     def get_max_queue(self,max_sizes):
         max_q = []
@@ -94,7 +96,7 @@ class MongoHandler(object):
     
     def revive_audio_clip_queue(self):
         """If a audio clip in the queue has been processing for more than
-            queue_revive_time seconds, reset its processing status"""
+            queue_revive_time seconds, reset its processing state"""
         non_none = self.audio_clip_queue.find({"processing": {"$ne" : None}})
         for clip in non_none:
             if  time() - clip["processing"] > self.queue_revive_time:
@@ -107,16 +109,16 @@ class MongoHandler(object):
             self.audio_clip_queue.remove({"_id":clip["_id"]})      
         self.logger.info("Finished updating audio clip queue") 
             
-    def update_audio_clip_status(self,clip_id_list,new_status):
+    def update_audio_clip_state(self,clip_id_list,new_state):
         if type(clip_id_list) != list:
             self.logger.error("Error updating audio clip(%s)"%clip_id_list)
             raise IOError
         for clip_id in clip_id_list:
-            self.audio_clips.update({"_id":clip_id},  {"$set" : {"status" : new_status}}  )   
-        self.logger.info("Updated audio clip status for: %s"%clip_id_list)
+            self.audio_clips.update({"_id":clip_id},  {"$set" : {"state" : new_state}}  )   
+        self.logger.info("Updated audio clip state for: %s"%clip_id_list)
         return True
     
-    def create_transcription_hit_document(self,hit_id,hit_type_id,clip_queue,new_status):
+    def create_transcription_hit_document(self,hit_id,hit_type_id,clip_queue,new_state):
         if type(clip_queue) != list:
             raise IOError
         clips = [w["audio_clip_id"] for w in clip_queue]
@@ -124,15 +126,15 @@ class MongoHandler(object):
                                        {"_id":hit_id,
                                         "hit_type_id": hit_type_id,
                                         "clips" : clips,
-                                        "status": new_status},
+                                        "state": new_state},
                                        upsert = True)
         self.logger.info("Updated transcription hit %s "%hit_id)
         return True
     
-    def create_assignment_artifact(self,assignment,transcription_ids,status):
+    def create_assignment_artifact(self,assignment,transcription_ids,state):
         """Create the assignment document with the transcription ids.
-            AssignmentStatus is the AMT assignment status.
-            status is the engine lifecycle status."""
+            AMTAssignmentStatus is the AMT assignment state.
+            state is the engine lifecycle state."""
         assignment_id = assignment.AssignmentId
         self.assignments.update({"_id":assignment_id},
                                         {"_id":assignment_id,
@@ -142,14 +144,14 @@ class MongoHandler(object):
                                          "hit_id" : assignment.HITId,
                                          "worker_id" : assignment.WorkerId,
                                          "transcriptions" : transcription_ids,
-                                         "status": status},
+                                         "state": state},
                                         upsert = True)
         self.logger.info("Created Assignment document, assignment ID(%s) "%assignment_id)
         return True
     
     def create_audio_source_artifact(self,uri,disk_space,length_seconds,
                                      sample_rate,speaker_id,
-                                     encoding,audio_clip_id=None,status="New"):
+                                     encoding,audio_clip_id=None,state="New"):
         """Each audio source is automatically an audio clip,
             Therefore the reference transcription can be found
             by referencing the audio clip assigned to this source.
@@ -161,7 +163,7 @@ class MongoHandler(object):
                     "sample_rate" : sample_rate,
                     "speaker_id" : speaker_id,
                     "encoding" : encoding,
-                    "status" : status}
+                    "state" : state}
         try:
             source_id = self.get_audio_source(document,field="_id")
         except TooManyEntries as e:
@@ -191,7 +193,7 @@ class MongoHandler(object):
     def create_audio_clip_artifact(self,source_id,source_start_time,source_end_time,
                                    uri,http_url,length_seconds,
                                    disk_space,reference_transcription_id=None,
-                                   status="Sourced"):
+                                   state="Sourced"):
         """A -1 endtime means to the end of the clip."""
         document = {"source_id" : source_id,
                     "source_start_time" :source_start_time,
@@ -201,7 +203,7 @@ class MongoHandler(object):
                     "length_seconds" : length_seconds,
                     "disk_space" : disk_space,
                     "reference_transcription_id" : reference_transcription_id,
-                    "status" : status}
+                    "state" : state}
         try:
             clip_id = self.get_audio_clip(document,field="_id")
         except TooManyEntries as e:
@@ -212,7 +214,7 @@ class MongoHandler(object):
         self.audio_clips.insert(document)
         return self.get_audio_clip(document,field="_id")
     
-    def update_transcription_status(self,transcription,status):
+    def update_transcription_state(self,transcription,state):
         """Use secondary ID audio clip + assignment"""
         self.transcriptions.update({"audio_clip_id": transcription["audio_clip_id"],
                                     "assignment_id": transcription["assignment_id"]},
@@ -220,7 +222,7 @@ class MongoHandler(object):
                                     "audio_clip_id": transcription["audio_clip_id"],
                                     "transcription": transcription["transcription"],
                                     "worker_id": transcription["worker_id"],
-                                    "status" : status},
+                                    "state" : state},
                                    upsert = True)
         self.logger.info("Updated transcription w/ audio clip(%s) in assignment(%s) for worker (%s)"\
                          %(transcription["audio_clip_id"],transcription["assignment_id"],\
@@ -230,21 +232,21 @@ class MongoHandler(object):
         """For the audio source given the id, set
             the value using the document"""
         self.audio_sources.update({"_id":source_id},{"$set": {"audio_clip_id": clip_id}})
-        self.audio_sources.update({"_id":source_id},{"$set": {"status" : "Clipped"}})
+        self.audio_sources.update({"_id":source_id},{"$set": {"state" : "Clipped"}})
         
     def update_audio_clip_reference_transcription(self,clip_id,reference_transcription_id):
         self.audio_clips.update({"_id":clip_id},
                                 {"$set" : {"reference_transcription_id" : reference_transcription_id}})
         self.audio_clips.update({"_id":clip_id},
-                                {"$set" : {"status" : "Referenced"}})
+                                {"$set" : {"state" : "Referenced"}})
         
-    def update_assignment_status(self,assignment,status):
+    def update_assignment_state(self,assignment,state):
         self.assignments.update({"_id":assignment["_id"]},
-                                {"$set":{"status":status}})       
+                                {"$set":{"state":state}})       
         
-    def update_transcription_hit_status(self,hit_id,new_status):
-        self.transcription_hits.update({"_id":hit_id},  {"$set" : {"status" : new_status}}  )   
-        self.logger.info("Updated transcription hit(%s) status to: %s"%(hit_id,new_status))
+    def update_transcription_hit_state(self,hit_id,new_state):
+        self.transcription_hits.update({"_id":hit_id},  {"$set" : {"state" : new_state}}  )   
+        self.logger.info("Updated transcription hit(%s) state to: %s"%(hit_id,new_state))
         return True
     
     def remove_transcription_hit(self,hit_id):
@@ -257,6 +259,17 @@ class MongoHandler(object):
         return [self.get_audio_clip({field: iD}) for iD in ids]
     
     def get_audio_clip(self,search,field=None,refine={}):
+        responses = self.audio_clips.find(search,refine)\
+                    if refine else self.audio_clips.find(search)
+        prev = False
+        for response in responses:
+            if prev:
+                raise TooManyEntries("MongoHandler.get_audio_clip")
+            prev = response        
+        return prev[field] if field and prev else prev
+    
+    def get_audio_clip_by_id(self,clip_id,field=None,refine={}):
+        search = {"_id": ObjectId(clip_id)}
         responses = self.audio_clips.find(search,refine)\
                     if refine else self.audio_clips.find(search)
         prev = False
@@ -306,7 +319,7 @@ class MongoHandler(object):
                               "processing" : None,
                               },
                              upsert = True)
-        self.update_audio_clip_status([audio_clip_id], "Queued")
+        self.update_audio_clip_state([audio_clip_id], "Queued")
         self.logger.info("Queued clip: %s "%audio_clip_id)
         
     def get_audio_clip_queue(self):
@@ -333,14 +346,14 @@ class MongoHandler(object):
         return max_q
     
     def initialize_test_db(self):
-        audio_clips = [{ "_id" : "12345", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "status" : "New" },
-                       { "_id" : "54321", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "status" : "New" },
-                       { "_id" : "98765", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "status" : "New" }]
+        audio_clips = [{ "_id" : "12345", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "state" : "New" },
+                       { "_id" : "54321", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "state" : "New" },
+                       { "_id" : "98765", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "state" : "New" }]
         audio_clip_queue = [{"audio_clip_id" : "12345", "priority" : 1, "processing" : None, "max_size" : 3 },
                             {"audio_clip_id" : "54321", "priority" : 1, "processing" : None, "max_size" : 3 },
                             {"audio_clip_id" : "98765", "priority" : 1, "processing" : None, "max_size" : 3 }]
-        transcriptions = [{ "assignment_id" : "21B85OZIZEHRPTEQZZH5HWPXNKOBZK", "audio_clip_id" : "12345", "worker_id" : "A2WBBX5KW5W6GY", "status" : "Submitted", "transcription" : "This is the first transcription." },
-                          { "assignment_id" : "21B85OZIZEHRPTEQZZH5HWPXNKOBZK", "audio_clip_id" : "12345.0", "worker_id" : "A2WBBX5KW5W6GY", "status" : "Submitted", "transcription" : "This is the second transcription.|This is the third transcription." }]
+        transcriptions = [{ "assignment_id" : "21B85OZIZEHRPTEQZZH5HWPXNKOBZK", "audio_clip_id" : "12345", "worker_id" : "A2WBBX5KW5W6GY", "state" : "Submitted", "transcription" : "This is the first transcription." },
+                          { "assignment_id" : "21B85OZIZEHRPTEQZZH5HWPXNKOBZK", "audio_clip_id" : "12345.0", "worker_id" : "A2WBBX5KW5W6GY", "state" : "Submitted", "transcription" : "This is the second transcription.|This is the third transcription." }]
     
 def main():
     mh = MongoHandler()
