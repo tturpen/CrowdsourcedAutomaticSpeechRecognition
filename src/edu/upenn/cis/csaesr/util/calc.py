@@ -32,7 +32,7 @@ def wer(ref,hyp):
     #calculate            
     for i in range(1, len(d)):
         for j in range(1, len(d[0])):
-            if ref[i-1] == hyp[j-1]:
+            if ref[i-1].lower() == hyp[j-1].lower():
                 d[i][j] = d[i-1][j-1]
             else:
                 sub = d[i-1][j-1] + 1
