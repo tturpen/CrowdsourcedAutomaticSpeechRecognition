@@ -110,8 +110,6 @@ class HitHandler():
     
     def make_html_transcription_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,
                                duration=DEFAULT_DURATION,reward=DEFAULT_REWARD):        
-        print(self.conn.get_account_balance())
-        
         overview = Overview()
         overview.append_field("Title", "Type the words in the following audio clip in order.")
         
