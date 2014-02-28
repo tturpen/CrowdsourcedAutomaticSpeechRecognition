@@ -40,6 +40,7 @@ class MongoHandler(object):
         self.turkers = self.db.turkers
         self.type_ids = self.db.type_ids
         self.assignments = self.db.assignments
+        self.workers = self.db.workers
         
         self.logger = logging.getLogger("transcription_engine.mongodb_handler")
         
@@ -190,6 +191,24 @@ class MongoHandler(object):
         self.reference_transcriptions.insert(document)
         return self.get_reference_transcription(document,field="_id")
     
+    def create_worker_artifact(self,worker_id):
+        document = {"_id": worker_id,
+                    "approved_transcription_ids":[],
+                    "denied_transcription_ids":[],
+                    "submitted_assignment_ids":[],
+                    "prequalification_assignment_id":None,
+                    "primary_author_merged_transcription_ids":[],
+                    "state":"New"}
+        try:
+            worker_id = self.get_worker({"_id":worker_id},field="_id")
+        except TooManyEntries as e:
+            self.logger.error("Duplicate artifact for document: %s"%document)            
+            raise DuplicateArtifactException(document)
+        if worker_id: 
+            return worker_id
+        self.workers.insert(document)
+        return self.get_worker(document,field="_id")
+    
     def create_audio_clip_artifact(self,source_id,source_start_time,source_end_time,
                                    uri,http_url,length_seconds,
                                    disk_space,reference_transcription_id=None,
@@ -228,6 +247,10 @@ class MongoHandler(object):
                          %(transcription["audio_clip_id"],transcription["assignment_id"],\
                            transcription["worker_id"]))
         
+    def add_assignment_to_worker(self,worker_id,assignment_id):
+        self.workers.update({"_id":worker_id},{"$addToSet":{"submitted_assignment_ids": assignment_id}})
+            
+                                            
     def update_audio_source_audio_clip(self,source_id,clip_id):
         """For the audio source given the id, set
             the value using the document"""
@@ -268,6 +291,16 @@ class MongoHandler(object):
             prev = response        
         return prev[field] if field and prev else prev
     
+    def get_worker(self,search,field=None,refine={}):
+        responses = self.workers.find(search,refine)\
+                    if refine else self.workers.find(search)
+        prev = False
+        for response in responses:
+            if prev:
+                raise TooManyEntries("MongoHandler.get_worker")
+            prev = response        
+        return prev[field] if field and prev else prev
+        
     def get_audio_clip_by_id(self,clip_id,field=None,refine={}):
         search = {"_id": ObjectId(clip_id)}
         responses = self.audio_clips.find(search,refine)\

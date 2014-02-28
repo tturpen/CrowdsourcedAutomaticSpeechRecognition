@@ -17,6 +17,9 @@ def main():
     hyp = "Humpty broke his nose on the sidewalk by the church."
     print(wer(ref.split(),hyp.split()))
     
+CHARACTER_ERROR_RATE_THRESHOLD = 2
+MINMUM_CHARACTERS_FOR_CER = 5
+
 def wer(ref,hyp):
     d = []
     #zeros
@@ -40,6 +43,43 @@ def wer(ref,hyp):
                 deletion = d[i-1][j] + 1
                 d[i][j] = min(sub,ins,deletion)
     return d[len(ref)][len(hyp)]
+
+def cer_wer(ref,hyp):
+    d = []
+    #zeros
+    for j in range(len(ref)+1):
+        d.append([0]*(len(hyp)+1))
+    #initialize
+    for i in range(len(d)):
+        for j in range(len(d[0])):
+            if i == 0:
+                d[0][j] = j
+            elif j == 0:
+                d[i][0] = i
+    #calculate            
+    for i in range(1, len(d)):
+        for j in range(1, len(d[0])):
+            if cer_compare(ref[i-1].lower(),hyp[j-1].lower()):
+                d[i][j] = d[i-1][j-1]
+            else:
+                sub = d[i-1][j-1] + 1
+                ins = d[i][j-1] + 1
+                deletion = d[i-1][j] + 1
+                d[i][j] = min(sub,ins,deletion)
+    return d[len(ref)][len(hyp)]
+
+def cer_compare(ref_tok,hyp_tok):
+    """If the reference token has the minimum number of characters
+        and the character error rate is below the threshold
+        return True
+        else return False or their comparison"""
+    cer = wer(ref_tok,hyp_tok)
+    if len(ref_tok) >= MINMUM_CHARACTERS_FOR_CER:
+        if cer <= CHARACTER_ERROR_RATE_THRESHOLD:
+            return True
+        return False
+    return ref_tok == hyp_tok
+
 
 if __name__ == "__main__":
     main()

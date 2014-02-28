@@ -18,7 +18,7 @@ from handlers.MongoDB import MongoHandler
 from data.structures import TranscriptionHit
 from handlers.Audio import WavHandler, PromptHandler
 from handlers.Exceptions import WavHandlerException, PromptNotFound
-from util.calc import wer
+from util.calc import wer, cer_wer
 from shutil import copyfile
 
 import logging
@@ -149,11 +149,14 @@ class TranscriptionPipelineHandler():
             the audio clips and transcriptions."""
         assignments = self.mh.get_all_assignments_by_state("Submitted")        
         for assignment in assignments:
+            assignment_id = assignment["_id"]
             denied = []
             #If no transcriptions have references then we automatically approve the HIT
             approved = True
             transcription_ids = assignment["transcriptions"]
             transcriptions = self.mh.get_transcriptions("_id",transcription_ids)
+            worker_id = assignment["worker_id"]
+            worker_id = self.mh.create_worker_artifact(worker_id)
             for transcription in transcriptions:
                 reference_id = self.mh.get_audio_clip_by_id(transcription["audio_clip_id"],"reference_transcription_id")
                 if reference_id:
@@ -161,28 +164,25 @@ class TranscriptionPipelineHandler():
                                                                                   "transcription")
                     new_transcription = transcription["transcription"].split(" ")
                     if reference_transcription:
-                        transcription_wer = wer(reference_transcription,new_transcription)
+                        transcription_wer = cer_wer(reference_transcription,new_transcription)
                         wer_ratio = len(reference_transcription)/2
-                        if transcription_wer < wer_ratio and wer_ratio:
-                            denied.append((reference_transcription,new_transcription))
-                            self.mh.update_transcription_state(transcription,"Confirmed")
-                            logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
-                        elif transcription_wer < WER_THRESHOLD:
-                            denied.append((reference_transcription,new_transcription))
+                        if transcription_wer < wer_ratio and wer_ratio or transcription_wer < WER_THRESHOLD:
                             self.mh.update_transcription_state(transcription,"Confirmed")
                             logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
                         else:
+                            denied.append((reference_transcription,new_transcription))
                             approved = False
             if approved:
                 self.mh.update_assignment_state(assignment,"Approved")    
                 for transcription in transcriptions:
                         reference_id = self.mh.get_audio_clip({"_id":transcription["audio_clip_id"]},"reference")
                         if not reference_id:
-                            self.mh.update_transcription_state(transcription,"Approved")
-                                          
+                            self.mh.update_transcription_state(transcription,"Approved")                                          
                 print("Approved transcription ids: %s"%transcription_ids)
             else:
                 print("Assignments not aproved %s "%denied)
+            #Update the worker
+            self.mh.add_assignment_to_worker(worker_id,assignment_id)
             
     def _bootstrap_rm_audio_source_file_to_clipped(self,file_dir,prompt_file_uri,
                                                    base_clip_dir,sample_rate=16000,
