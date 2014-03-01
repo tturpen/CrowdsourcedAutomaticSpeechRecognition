@@ -272,6 +272,19 @@ class MongoHandler(object):
         self.logger.info("Updated transcription hit(%s) state to: %s"%(hit_id,new_state))
         return True
     
+    def get_all_workers(self):
+        return self.workers.find({})
+    
+    def get_worker_assignments(self,worker):
+        approved = []
+        denied = []
+        for assignment in worker["submitted_assignment_ids"]:
+            a = self.get_assignment({"_id":assignment,"state":"Approved"},"_id")
+            d = self.get_assignment({"_id":assignment,"state":"Denied"},"_id")
+            if a: approved.append(a)
+            elif d: denied.append(d)
+        return approved, denied
+    
     def remove_transcription_hit(self,hit_id):
         self.transcription_hits.remove({"_id":hit_id})
                 
@@ -322,6 +335,29 @@ class MongoHandler(object):
             prev = response        
         return prev[field] if field and prev else prev
     
+    def get_assignment(self,search,field=None,refine={}):
+        responses = self.assignments.find(search,refine)\
+                    if refine else self.assignments.find(search)
+        prev = False
+        for response in responses:
+            if prev:
+                raise TooManyEntries("MongoHandler.get_audio_source")
+            prev = response        
+        return prev[field] if field and prev else prev
+    
+    def get_transcription_pairs(self,assignment_id):
+        """Given an assignment_id, return the hypothesis and 
+            reference transcriptions, if they exist"""
+        assignment = self.get_assignment({"_id":assignment_id})
+        pairs = []
+        for transcription_id in assignment["transcriptions"]:
+            transcription = self.get_transcription({"_id":transcription_id})
+            reference_id = self.get_audio_clip_by_id(transcription["audio_clip_id"],"reference_transcription_id")
+            if reference_id:
+                reference_transcription = self.get_reference_transcription({"_id":reference_id},"transcription")            
+                pairs.append((reference_transcription,transcription["transcription"]))
+        return pairs
+            
     def get_transcriptions(self,field,ids):
         return [self.get_transcription({field: iD}) for iD in ids]
     

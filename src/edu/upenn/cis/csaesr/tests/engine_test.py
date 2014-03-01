@@ -180,6 +180,7 @@ class TranscriptionPipelineHandler():
                             self.mh.update_transcription_state(transcription,"Approved")                                          
                 print("Approved transcription ids: %s"%transcription_ids)
             else:
+                self.mh.update_assignment_state(assignment,"Denied")    
                 print("Assignments not aproved %s "%denied)
             #Update the worker
             self.mh.add_assignment_to_worker(worker_id,assignment_id)
@@ -255,6 +256,28 @@ class TranscriptionPipelineHandler():
                     #Completes audio clip to Referenced
                     self.mh.update_audio_clip_reference_transcription(clip_id,transcription_id)
 
+    def all_workers_liveness(self):
+        workers = self.mh.get_all_workers()
+        for worker in workers:
+            worker_id = worker["_id"]
+            approved, denied = self.mh.get_worker_assignments(worker)
+            print("Worker(%s) assignments, approved(%s) denied(%s)"%(worker["_id"],approved,denied))
+            selection = input("1. Show denied transcriptions and references.\n"+
+                                    "2. Show accepted transcriptions and references.\n"+
+                                    "3. Show both denied and accepted transcriptions.")
+            if selection == 1 or selection == 3:
+                print("Approved transcriptions")
+                for assignment_id in approved:
+                    transcription_pairs = self.mh.get_transcription_pairs(assignment_id)
+                    for pair in transcription_pairs:
+                        print ("Reference:\n\t%s\nHypothesis:\n\t%s\n"%(pair[0],pair[1]))
+            if selection == 2 or selection == 3:
+                print("Denied transcriptions")
+                for assignment_id in denied:
+                    transcription_pairs = self.mh.get_transcription_pairs(assignment_id)
+                    for pair in transcription_pairs:
+                        print ("Reference:\n\t%s\nHypothesis:\n\t%s\n"%(pair[0],pair[1]))
+
             
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
@@ -264,12 +287,14 @@ class TranscriptionPipelineHandler():
         for hit in hits:
             hit_id = hit.HITId            
             print("HIT ID: %s"%hit_id)
-            if raw_input("Remove hit?(y/n)") == "y":
-                try:
-                    self.conn.disable_hit(hit.HITId)
-                    self.mh.remove_transcription_hit(hit_id)
-                except MTurkRequestError as e:
-                    raise e
+            assignments = self.conn.get_assignments(hit_id)
+            if len(assignments) == 0:
+                if raw_input("Remove hit with no submitted assignments?(y/n)") == "y":
+                    try:
+                        self.conn.disable_hit(hit.HITId)
+                        self.mh.remove_transcription_hit(hit_id)
+                    except MTurkRequestError as e:
+                        raise e
         
 #------------------------------------------------------------------------------ 
             #-------------------------------- allhits = self.conn.get_all_hits()
@@ -288,14 +313,15 @@ def main():
     base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
     selection = 0
     init_clip_count = 15
-    while selection != 6:
+    while selection != 7:
         selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
                                  1: AudioSource-FileToClipped: Initialize Resource Management audio source files to %d queueable(Referenced) clips
                                  2: AudioClip-ReferencedToHit: Queue all referenced audio clips and create a HIT if the queue is full.
                                  3: AudioClip-HitToSubmitted: Check all submitted assignments for Transcriptions.
                                  4: AudioClip-SubmittedToApproved: Check all submitted clips against their reference.
                                  5: Review Current Hits
-                                 6: Exit
+                                 6: Worker liveness
+                                 7: Exit
                                 """%init_clip_count)
         #selection = "5"
         if selection == "1":
@@ -310,6 +336,8 @@ def main():
             tph.assignment_submitted_approved()
         elif selection == "5":
             tph.allhits_liveness()
+        elif selection == "6":
+            tph.all_workers_liveness()
     
 
 

@@ -116,15 +116,27 @@ class HitHandler():
         url = "http://www.cis.upenn.edu/~tturpen/basic_transcription_hit.html"
         description = "Transcribe the audio clip by typing the words that the person \
                         says in order."
+        disable_input_script = 'document.getElementById("${input_id}").disabled = true;'
                         
         keywords = "audio, transcription"
         html_head = self.html_head.replace(self.html_tags["title"],hit_title).replace(self.html_tags["description"],description)
-        html = html_head
         count = 0
+        questions = []
+        inputs = []
         for acurl,acid in audio_clip_urls:
+            input_id = str(count) + str(acid) 
             question = self.html_question.replace(self.html_tags["audio_url"],acurl)
             question = question.replace(self.html_tags["audioclip_id"],str(acid))
-            question = question.replace("${count}",str(count))
+            question = question.replace("${count}",str(input_id))
+            questions.append(question)
+            inputs.append(input_id)
+            
+        for input_id in inputs:
+            script = disable_input_script.replace("${input_id}",input_id)
+            html_head = html_head.replace("${disable_script}",script+"\n"+"${disable_script}")
+        html_head = html_head.replace("${disable_script}","")
+        html = html_head
+        for question in questions:        
             html += question
             count += 1
         
