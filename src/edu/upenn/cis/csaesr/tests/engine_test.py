@@ -315,7 +315,7 @@ def main():
     base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
     selection = 0
     init_clip_count = 15
-    while selection != 7:
+    while selection != "7":
         selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
                                  1: AudioSource-FileToClipped: Initialize Resource Management audio source files to %d queueable(Referenced) clips
                                  2: AudioClip-ReferencedToHit: Queue all referenced audio clips and create a HIT if the queue is full.
