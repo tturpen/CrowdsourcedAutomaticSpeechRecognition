@@ -158,6 +158,8 @@ class TranscriptionPipelineHandler():
             worker_id = assignment["worker_id"]
             worker_id = self.mh.create_worker_artifact(worker_id)
             for transcription in transcriptions:
+                #Normalize the transcription
+                #self.mh.normalize_transcription
                 reference_id = self.mh.get_audio_clip_by_id(transcription["audio_clip_id"],"reference_transcription_id")
                 if reference_id:
                     reference_transcription = self.mh.get_reference_transcription({"_id": reference_id},
