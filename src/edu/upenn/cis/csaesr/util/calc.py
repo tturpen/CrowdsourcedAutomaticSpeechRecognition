@@ -17,14 +17,14 @@ def main():
     hyp = "Humpty broke his nose on the sidewalk by the church."
     print(wer(ref.split(),hyp.split()))
     
-CHARACTER_ERROR_RATE_THRESHOLD = 2
+CHARACTER_ERROR_RATE_THRESHOLD = .4
 MINMUM_CHARACTERS_FOR_CER = 5
 
 def wer(ref,hyp):
     d = []
     #zeros
     for j in range(len(ref)+1):
-        d.append([0]*(len(hyp)+1))
+        d.append([0.0]*(len(hyp)+1))
     #initialize
     for i in range(len(d)):
         for j in range(len(d[0])):
@@ -42,7 +42,7 @@ def wer(ref,hyp):
                 ins = d[i][j-1] + 1
                 deletion = d[i-1][j] + 1
                 d[i][j] = min(sub,ins,deletion)
-    return d[len(ref)][len(hyp)]
+    return float(d[len(ref)][len(hyp)])/float(len(ref))
 
 def cer_wer(ref,hyp):
     d = []
@@ -66,7 +66,7 @@ def cer_wer(ref,hyp):
                 ins = d[i][j-1] + 1
                 deletion = d[i-1][j] + 1
                 d[i][j] = min(sub,ins,deletion)
-    return d[len(ref)][len(hyp)]
+    return float(d[len(ref)][len(hyp)])/float(len(ref))
 
 def cer_compare(ref_tok,hyp_tok):
     """If the reference token has the minimum number of characters
