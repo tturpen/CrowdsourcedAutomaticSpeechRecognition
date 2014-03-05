@@ -85,7 +85,8 @@ class TurkerHandler():
 
 class HitHandler():
     DEFAULT_DURATION = 60*5
-    DEFAULT_REWARD = 0.05
+    DEFAULT_REWARD = 0.02
+    DEFAULT_MAX_ASSIGNMENTS = 3
     def __init__(self,connection,template_dir):
         self.conn = connection
         base_dir = os.getcwd()
@@ -108,48 +109,75 @@ class HitHandler():
     def get_HIT(self,hit_id,response_groups=None):
         return self.conn.get_hit(hit_id, response_groups)
     
+    def estimate_html_HIT_cost(self,audio_clip_urls,reward_per_clip,
+                               max_assignments):
+        return reward_per_clip * len(audio_clip_urls) * max_assignments  
+        
     def make_html_transcription_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,
-                               duration=DEFAULT_DURATION,reward=DEFAULT_REWARD):        
+                               duration=DEFAULT_DURATION,reward_per_clip=DEFAULT_REWARD,max_assignments=DEFAULT_MAX_ASSIGNMENTS):        
         overview = Overview()
         overview.append_field("Title", "Type the words in the following audio clip in order.")
         
         url = "http://www.cis.upenn.edu/~tturpen/basic_transcription_hit.html"
-        description = "Transcribe the audio clip by typing the words that the person \
-                        says in order."
-        disable_input_script = 'document.getElementById("${input_id}").disabled = true;'
+        descriptions = ["The following audio clips are in English.",
+                        "Transcribe the audio clip by typing the words that the person \
+                        says in order.",
+                        "Do not use abbreviations: 'street' and NOT 'st.'",
+                        "Write numbers long-form, as in: 'twenty fifth' NOT '25th'."]
+        
+        disable_script_tag = "${disable_script}"
+        audio_id_tag = "${audio_id}"
+        #audio_listener_tag = "${audio_event_listener_script}"
                         
-        keywords = "audio, transcription"
-        html_head = self.html_head.replace(self.html_tags["title"],hit_title).replace(self.html_tags["description"],description)
+        disable_input_script = 'document.getElementById("${input_id}").disabled = true;'
+        #audio_event_listener_script = "document.getElementById('${input_id}').addEventListener('ended',enableSubmitButton());"
+                        
+        keywords = "audio, transcription, English"
+        html_head = self.html_head.replace(self.html_tags["title"],hit_title)
+        for description in descriptions:            
+            html_head = html_head.replace(self.html_tags["description"],
+                                          "<li>"+description+"</li>\n"+self.html_tags["description"])
+        print(html_head)
         count = 0
         questions = []
         inputs = []
         for acurl,acid in audio_clip_urls:
-            input_id = str(count) + str(acid) 
+            input_id = str(acid) 
             question = self.html_question.replace(self.html_tags["audio_url"],acurl)
             question = question.replace(self.html_tags["audioclip_id"],str(acid))
-            question = question.replace("${count}",str(input_id))
+            question = question.replace("${count}",input_id)
+            count += 1
             questions.append(question)
             inputs.append(input_id)
             
         for input_id in inputs:
             script = disable_input_script.replace("${input_id}",input_id)
-            html_head = html_head.replace("${disable_script}",script+"\n"+"${disable_script}")
-        html_head = html_head.replace("${disable_script}","")
+            html_head = html_head.replace(disable_script_tag,script+"\n"+disable_script_tag)
+            if(audio_id_tag) in html_head:
+                html_head = html_head.replace(audio_id_tag,"'"+input_id+"'"+","+audio_id_tag)
+            
+        html_head = html_head.replace(disable_script_tag,"")
+        html_head = html_head.replace(","+audio_id_tag,"")
+        html_head = html_head.replace(self.html_tags["description"],"")
         html = html_head
+
         for question in questions:        
             html += question
             count += 1
         
         html += self.html_tail
         html_question = HTMLQuestion(html,800)
+        
+        #reward calculation
+        reward = reward_per_clip*len(audio_clip_urls)
         try:
             return self.conn.create_hit(title=hit_title,
                                     question=html_question,
-                                    max_assignments=1,
+                                    max_assignments=max_assignments,
                                     description=description,
                                     keywords=keywords,
-                                    duration = 60*5,
-                                    reward = 0.02)
+                                    duration = duration,
+                                    reward = reward)
         except MTurkRequestError as e:
             if e.reason != "OK":
                 raise 

@@ -28,7 +28,8 @@ class MongoHandler(object):
     def __init__(self):
         client = MongoClient(self.default_db_loc)
         self.queue_revive_time = 5       
-        self.db = client.transcription_db
+        #self.db = client.transcription_db
+        self.db = client.production_transcription_db
         self.audio_sources = self.db.audio#The full audio files
         self.audio_clips = self.db.audio_clips#portions of the full audio files
         self.audio_clip_queue = self.db.audio_clip_queue#queue of the audio clips
@@ -247,8 +248,8 @@ class MongoHandler(object):
                          %(transcription["audio_clip_id"],transcription["assignment_id"],\
                            transcription["worker_id"]))
         
-    def add_assignment_to_worker(self,worker_id,assignment_id):
-        self.workers.update({"_id":worker_id},{"$addToSet":{"submitted_assignment_ids": assignment_id}})
+    def add_assignment_to_worker(self,worker_id,assignment_tup):
+        self.workers.update({"_id":worker_id},{"$addToSet":{"submitted_assignments": assignment_tup}})
             
                                             
     def update_audio_source_audio_clip(self,source_id,clip_id):
@@ -278,12 +279,24 @@ class MongoHandler(object):
     def get_worker_assignments(self,worker):
         approved = []
         denied = []
-        for assignment in worker["submitted_assignment_ids"]:
+        for assignment in worker["submitted_assignments"]:
+            assignment, average_wer = assignment
             a = self.get_assignment({"_id":assignment,"state":"Approved"},"_id")
             d = self.get_assignment({"_id":assignment,"state":"Denied"},"_id")
             if a: approved.append(a)
             elif d: denied.append(d)
-        return approved, denied
+        return approved, denied    
+    
+    def get_worker_assignments_wer(self,worker):
+        approved = []
+        denied = []
+        for assignment in worker["submitted_assignments"]:
+            assignment, average_wer = assignment
+            a = self.get_assignment({"_id":assignment,"state":"Approved"},"_id")
+            d = self.get_assignment({"_id":assignment,"state":"Denied"},"_id")
+            if a: approved.append((a,average_wer))
+            elif d: denied.append((d,average_wer))
+        return approved, denied 
     
     def remove_transcription_hit(self,hit_id):
         self.transcription_hits.remove({"_id":hit_id})

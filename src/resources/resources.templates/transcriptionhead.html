@@ -7,7 +7,7 @@
   function disableInput(){
   hit_id=getParameterByName("assignmentId");
   if (hit_id == "ASSIGNMENT_ID_NOT_AVAILABLE"){
-	${disable_script}
+		${disable_script}
   }
   };
   function getParameterByName(name) {
@@ -16,12 +16,62 @@
         results = regex.exec(location.search);
     return results == null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
   }
-  window.onload = disableInput;
+  function validateForm(){
+	  if (window.validate)
+		  return true;
+	  else
+              {
+                   alert("Please make sure to listen to every audio clip.");
+                   return false;
+              }
+  }
+  function disableSubmitButton(){
+	  window.validate = false;
+	  document.getElementById("submitButton").setAttribute('onclick','return validateForm();');
+  }
+  
+  function enableSubmitButton(audioId){
+  window.listenedIds[window.idsCount] = audioId;
+  window.idsCount += 1;
+  window.validate = compareArrays(window.audioIds,window.listenedIds);
+  }
+
+  function compareArrays(ref,hyp){
+  var reflen = ref.length;
+  var hyplen = hyp.length;
+  var same = false;
+
+  for(var i = 0; i < reflen; i++){
+     same = false;
+
+     for(var j = 0; j < hyplen; j++){
+	if (ref[i].localeCompare(hyp[j]) === 0) {
+			same = true;
+			}
+     }
+
+     if(!same){
+	return false;
+	}
+  }
+  return true;
+}
+
+
+  function loadFuncs(){
+	  disableInput();
+	  disableSubmitButton();
+          //addAudioEventListeners();
+  window.audioIds = [${audio_id}];
+  window.listenedIds = new Array();
+  window.idsCount = 0;
+  }
+  window.onload = loadFuncs;  
 </script>
 </head><body><form name="mturk_form" method="post" id="mturk_form" action="https://www.mturk.com/mturk/externalSubmit"><input type="hidden" value="" name="assignmentId" id="assignmentId" /><h3>Transcribe the audio</h3>
 
 <div class="highlight-box">
 <ul>
-	<li>${description}</li>
+	${description}
 </ul>
 </div>

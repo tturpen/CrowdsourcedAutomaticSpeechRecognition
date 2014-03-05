@@ -24,9 +24,9 @@ from shutil import copyfile
 import logging
 import os
 
-HOST='mechanicalturk.sandbox.amazonaws.com'
+HOST='mechanicalturk.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
-WER_THRESHOLD = 4
+WER_THRESHOLD = .5
 
 #Init Logger
 logger = logging.getLogger("transcription_engine")
@@ -60,17 +60,18 @@ class TranscriptionPipelineHandler():
         self.mh = MongoHandler()
         self.wh = WavHandler()
         self.ph = PromptHandler()
+        self.balance = self.conn.get_account_balance()[0].amount
         
     def generate_audio_HITs(self):
         pass   
     
-    def audio_clip_referenced_to_hit(self,priority=1,max_queue_size=3):    
+    def audio_clip_referenced_to_hit(self,priority=1,max_queue_size=10):    
         for audio_clip in self.mh.get_all_audio_clips_by_state("Referenced"):
             audio_clip_id = audio_clip["_id"]
             self.mh.queue_clip(audio_clip_id, priority, max_queue_size)
             response = self.audio_clip_queue_to_hit()
 
-    def audio_clip_queued_to_hit(self,priority=1,max_queue_size=3):    
+    def audio_clip_queued_to_hit(self,priority=1,max_queue_size=10):    
         for audio_clip in self.mh.get_all_audio_clips_by_state("Queued"):
             audio_clip_id = audio_clip["_id"]
             response = self.audio_clip_queue_to_hit()
@@ -80,7 +81,7 @@ class TranscriptionPipelineHandler():
             #===================================================================
 
     
-    def audio_clip_queue_to_hit(self):
+    def audio_clip_queue_to_hit(self,cost_sensitive=True):
         """Take queued audio clips from the audio clip queue
             put them in a hit and create the hit.
             If successful, update the audio clip state."""
@@ -91,19 +92,26 @@ class TranscriptionPipelineHandler():
             question_title = "List and Transcribe" 
             description = "Transcribe the audio clip by typing the words the person says in order."
             keywords = "audio, transcription, audio transcription"
-            response = self.hh.make_html_transcription_HIT(clip_pairs,hit_title,
-                                         question_title, description, keywords)
-            if type(response) == ResultSet and len(response) == 1 and response[0].IsValid:
-                response = response[0]
-                self.mh.update_audio_clip_queue(clip_queue)
-                audio_clip_ids = [w["audio_clip_id"] for w in clip_queue]    
-                hit_id = response.HITId
-                hit_type_id = response.HITTypeId
-                self.mh.create_transcription_hit_document(hit_id,hit_type_id,clip_queue,"New")        
-                logger.info("Successfully created HIT: %s"%hit_id)
-                return self.mh.update_audio_clip_state(audio_clip_ids,"Hit")
-            else:
-                return False
+            if cost_sensitive:
+                reward_per_clip = 0.02
+                max_assignments = 3
+                estimated_cost = self.hh.estimate_html_HIT_cost(clip_pairs,reward_per_clip,max_assignments)
+                if self.balance - estimated_cost >= 0:
+                    response = self.hh.make_html_transcription_HIT(clip_pairs,hit_title,
+                                                 question_title, description, keywords)
+                    self.balance = self.balance - estimated_cost
+                    if type(response) == ResultSet and len(response) == 1 and response[0].IsValid:
+                        response = response[0]
+                        self.mh.update_audio_clip_queue(clip_queue)
+                        audio_clip_ids = [w["audio_clip_id"] for w in clip_queue]    
+                        hit_id = response.HITId
+                        hit_type_id = response.HITTypeId
+                        self.mh.create_transcription_hit_document(hit_id,hit_type_id,clip_queue,"New")        
+                        logger.info("Successfully created HIT: %s"%hit_id)
+                        return self.mh.update_audio_clip_state(audio_clip_ids,"Hit")
+                else:
+                    pass
+        return False
             
     def audio_clip_lifecycle_from_hit_to_submitted(self):
         """Check all assignments for audio clip IDs.
@@ -148,6 +156,13 @@ class TranscriptionPipelineHandler():
             have an acceptable WER, approve the assignment and update
             the audio clips and transcriptions."""
         assignments = self.mh.get_all_assignments_by_state("Submitted")        
+        rejected_feedback = "I'm sorry but your work in assignment(%s) was rejected because" +\
+                            " one or more of your transcriptions " +\
+                            " had a word error rate of %s, when the maximum acceptable"+\
+                            " word error rate was %s. You average word error rate for the"+\
+                            " assignment was(%s)"
+        accepted_feedback = "Your average word error rate on assignment(%s) was %s."+\
+                            " Assignment accepted! Thanks for your hard work."
         for assignment in assignments:
             assignment_id = assignment["_id"]
             denied = []
@@ -157,6 +172,9 @@ class TranscriptionPipelineHandler():
             transcriptions = self.mh.get_transcriptions("_id",transcription_ids)
             worker_id = assignment["worker_id"]
             worker_id = self.mh.create_worker_artifact(worker_id)
+            
+            max_rej_wer = (0.0,0.0)
+            total_wer = 0.0
             for transcription in transcriptions:
                 #Normalize the transcription
                 #self.mh.normalize_transcription
@@ -167,14 +185,18 @@ class TranscriptionPipelineHandler():
                     new_transcription = transcription["transcription"].split(" ")
                     if reference_transcription:
                         transcription_wer = cer_wer(reference_transcription,new_transcription)
+                        total_wer += transcription_wer
                         wer_ratio = len(reference_transcription)/2
                         if transcription_wer < wer_ratio and wer_ratio or transcription_wer < WER_THRESHOLD:
                             self.mh.update_transcription_state(transcription,"Confirmed")
                             logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
                         else:
+                            max_rej_wer = (transcription_wer,wer_ratio) if wer_ratio else (transcription_wer,WER_THRESHOLD)
                             denied.append((reference_transcription,new_transcription))
                             approved = False
-            if approved:
+            average_wer = total_wer/len(transcriptions)
+            if approved or not approved:
+                self.conn.approve_assignment(assignment_id, accepted_feedback%(assignment_id,average_wer))
                 self.mh.update_assignment_state(assignment,"Approved")    
                 for transcription in transcriptions:
                         reference_id = self.mh.get_audio_clip({"_id":transcription["audio_clip_id"]},"reference")
@@ -182,14 +204,59 @@ class TranscriptionPipelineHandler():
                             self.mh.update_transcription_state(transcription,"Approved")                                          
                 print("Approved transcription ids: %s"%transcription_ids)
             else:
+                feedback = rejected_feedback%(assignment_id,max_rej_wer[0],max_rej_wer[1],average_wer)
+                self.conn.reject_assignment(assignment_id,feedback)
                 self.mh.update_assignment_state(assignment,"Denied")    
                 print("Assignments not aproved %s "%denied)
             #Update the worker
-            self.mh.add_assignment_to_worker(worker_id,assignment_id)
+            self.mh.add_assignment_to_worker(worker_id,(assignment_id,average_wer))
+            
+    def recalculate_worker_assignment_wer(self):
+        """For all submitted assignments,
+            if an answered question has a reference transcription,
+            check the WER.
+            If all the answered questions with reference transcriptions
+            have an acceptable WER, approve the assignment and update
+            the audio clips and transcriptions."""
+        assignments = self.mh.get_all_assignments_by_state("Approved")        
+        for assignment in assignments:
+            assignment_id = assignment["_id"]
+            denied = []
+            #If no transcriptions have references then we automatically approve the HIT
+            approved = True
+            transcription_ids = assignment["transcriptions"]
+            transcriptions = self.mh.get_transcriptions("_id",transcription_ids)
+            worker_id = assignment["worker_id"]
+            worker_id = self.mh.create_worker_artifact(worker_id)
+            
+            max_rej_wer = (0.0,0.0)
+            total_wer = 0.0
+            for transcription in transcriptions:
+                #Normalize the transcription
+                #self.mh.normalize_transcription
+                reference_id = self.mh.get_audio_clip_by_id(transcription["audio_clip_id"],"reference_transcription_id")
+                if reference_id:
+                    reference_transcription = self.mh.get_reference_transcription({"_id": reference_id},
+                                                                                  "transcription")
+                    new_transcription = transcription["transcription"].split(" ")
+                    if reference_transcription:
+                        transcription_wer = cer_wer(reference_transcription,new_transcription)
+                        total_wer += transcription_wer
+                        if transcription_wer < WER_THRESHOLD:
+                            logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
+                        else:
+                            max_rej_wer = (transcription_wer,WER_THRESHOLD)
+                            denied.append((reference_transcription,new_transcription))
+                            approved = False
+            average_wer = total_wer/len(transcriptions)
+            #Update the worker
+            self.mh.add_assignment_to_worker(worker_id,(assignment_id,average_wer))
+
             
     def _bootstrap_rm_audio_source_file_to_clipped(self,file_dir,prompt_file_uri,
                                                    base_clip_dir,sample_rate=16000,
-                                                   http_base_url = "http://www.cis.upenn.edu/~tturpen/wavs/"):
+                                                   http_base_url = "http://www.cis.upenn.edu/~tturpen/wavs/",
+                                                   init_clip_count = 1000):
         """For an audio directory,
             see which files are new and not an audio source already
             """
@@ -197,7 +264,7 @@ class TranscriptionPipelineHandler():
         count = 0
         for root, dirs, files in os.walk(file_dir):
             for f in files:
-                if count == 15:
+                if count == init_clip_count:
                     return
                 count += 1
                 system_uri = os.path.join(root,f)
@@ -281,6 +348,24 @@ class TranscriptionPipelineHandler():
                         print ("Reference:\n\t%s\nHypothesis:\n\t%s\n"%(pair[0],pair[1]))
 
             
+    def stats(self):
+        workers = self.mh.get_all_workers()
+        all_wer_per_approved_assignment = 0.0
+        total_accepted = 0.0
+        for worker in workers:
+            worker_wer = 0.0
+            worker_id = worker["_id"]
+            approved, denied = self.mh.get_worker_assignments_wer(worker)
+            for w in approved: 
+                all_wer_per_approved_assignment += float(w[1])
+                worker_wer += float(w[1])
+                total_accepted += 1
+            worker_average_wer = worker_wer/len(approved)
+            print("%s,%s"%(len(approved),worker_average_wer))
+            #print("Worker(%s) approved assignments(%s)\n denied assignments(%s)"%(worker_id,approved,denied))
+        av = all_wer_per_approved_assignment/total_accepted
+        #print("Average WER per assignment(%s)"%(av))
+        
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
         #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
@@ -314,8 +399,8 @@ def main():
     prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
     base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
     selection = 0
-    init_clip_count = 15
-    while selection != "7":
+    init_clip_count = 6
+    while selection != "10":
         selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
                                  1: AudioSource-FileToClipped: Initialize Resource Management audio source files to %d queueable(Referenced) clips
                                  2: AudioClip-ReferencedToHit: Queue all referenced audio clips and create a HIT if the queue is full.
@@ -323,13 +408,16 @@ def main():
                                  4: AudioClip-SubmittedToApproved: Check all submitted clips against their reference.
                                  5: Review Current Hits
                                  6: Worker liveness
-                                 7: Exit
+                                 7: Account balance
+                                 8: Worker stats
+                                 9: Recalculate worker WER
+                                 10: Exit
                                 """%init_clip_count)
         #selection = "5"
         if selection == "1":
             tph._bootstrap_rm_audio_source_file_to_clipped(audio_file_dir,
                                                    prompt_file_uri,
-                                                   base_clip_dir)
+                                                   base_clip_dir,init_clip_count)
         elif selection == "2":
             tph.audio_clip_referenced_to_hit()
         elif selection == "3":
@@ -340,6 +428,12 @@ def main():
             tph.allhits_liveness()
         elif selection == "6":
             tph.all_workers_liveness()
+        elif selection == "7":
+            print("Account balance: %s"%tph.balance)
+        elif selection == "8":
+            tph.stats()
+        elif selection == "9":
+            tph.recalculate_worker_assignment_wer()
     
 
 
