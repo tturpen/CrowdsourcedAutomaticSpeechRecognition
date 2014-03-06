@@ -137,7 +137,6 @@ class HitHandler():
         for description in descriptions:            
             html_head = html_head.replace(self.html_tags["description"],
                                           "<li>"+description+"</li>\n"+self.html_tags["description"])
-        print(html_head)
         count = 0
         questions = []
         inputs = []
