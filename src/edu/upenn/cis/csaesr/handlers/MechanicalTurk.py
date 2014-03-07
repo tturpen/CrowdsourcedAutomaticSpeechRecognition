@@ -123,7 +123,10 @@ class HitHandler():
                         "Transcribe the audio clip by typing the words that the person \
                         says in order.",
                         "Do not use abbreviations: 'street' and NOT 'st.'",
-                        "Write numbers long-form, as in: 'twenty fifth' NOT '25th'."]
+                        "Write numbers long-form, as in: 'twenty fifth' NOT '25th'.",
+                        "Write letters (see example).",
+                        "Punctuation does not matter.",
+                        "Hotkeys: press Tab to play the next clip."]
         
         disable_script_tag = "${disable_script}"
         audio_id_tag = "${audio_id}"
@@ -169,6 +172,7 @@ class HitHandler():
         
         #reward calculation
         reward = reward_per_clip*len(audio_clip_urls)
+        print(html)
         try:
             return self.conn.create_hit(title=hit_title,
                                     question=html_question,

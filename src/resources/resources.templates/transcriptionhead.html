@@ -67,11 +67,32 @@
   window.idsCount = 0;
   }
   window.onload = loadFuncs;  
+  function play(id){
+	  document.getElementById(id).play();
+  }
 </script>
+<style type="text/css">
+  .row { vertical-align: top; height:auto !important; }
+  .list {display: none; }
+  .show {display: none; }
+  .hide:target + .show {display: inline; }
+  .hide:target {display: inline; }
+  .hide:target ~ .list {display:inline; }
+  @media print { .hide, .show {display: none; }}
+</style>
 </head><body><form name="mturk_form" method="post" id="mturk_form" action="https://www.mturk.com/mturk/externalSubmit"><input type="hidden" value="" name="assignmentId" id="assignmentId" /><h3>Transcribe the audio</h3>
 
 <div class="highlight-box">
 <ul>
 	${description}
 </ul>
+</div>
+<div id="examples" name="examples">
+  <a href="#hide1" class="hide" id="hide1">Expand Example</a>
+  <a href="#show1" class="show" id="show1">Collapse Example</a>
+  <div class="list">
+    <audio controls="" id="12345" onfocus="play('12345');"><source src="http://www.cis.upenn.edu/~tturpen/wavs/sdc0_5/sr067.wav" type="audio/wav" /> Your browser does not support the audio element.</audio>
+    <p>Transcription:</p>
+    <p><input id="example01" name="example01" size="100" type="text" readOnly="true" value="What was the Nashua's position in ASUW area mission code on the twenty first of August?"/></p>
+  </div>
 </div>

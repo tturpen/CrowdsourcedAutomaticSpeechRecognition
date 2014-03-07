@@ -1,6 +1,6 @@
 <div>&nbsp;</div>
 <p>
-<audio controls="" onended="enableSubmitButton('${audioclipid}');"><source src="${audiourl}" type="audio/wav" /> Your browser does not support the audio element.</audio>
+<audio id='audio${audioclipid}' controls="" onended="enableSubmitButton('${audioclipid}');" onfocus="play('audio${audioclipid}');"><source src="${audiourl}" type="audio/wav" /> Your browser does not support the audio element.</audio>
 </p>
 
 <p>Transcription:</p>

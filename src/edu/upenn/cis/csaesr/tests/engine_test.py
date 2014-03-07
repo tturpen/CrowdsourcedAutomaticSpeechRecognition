@@ -192,14 +192,18 @@ class TranscriptionPipelineHandler():
                             approved = False
             average_wer = total_wer/len(transcriptions)
             if approved or not approved:
-                self.conn.approve_assignment(assignment_id, accepted_feedback%(assignment_id,average_wer))
-                self.mh.update_assignment_state(assignment,"Approved")    
-                for transcription in transcriptions:
-                    #Approve transcriptions without references in the same assignment
-                    reference_id = self.mh.get_artifact_by_id("audio_clips",transcription["audio_clip_id"],"reference_transcription_id")
-                    if not reference_id:
-                        self.mh.update_transcription_state(transcription,"Approved")                                          
-                print("Approved transcription ids: %s"%transcription_ids)
+                try:
+                    self.conn.approve_assignment(assignment_id, accepted_feedback%(assignment_id,average_wer))
+                except MTurkRequestError as e:
+                    print(e)
+                else:
+                    self.mh.update_assignment_state(assignment,"Approved")    
+                    for transcription in transcriptions:
+                        #Approve transcriptions without references in the same assignment
+                        reference_id = self.mh.get_artifact_by_id("audio_clips",transcription["audio_clip_id"],"reference_transcription_id")
+                        if not reference_id:
+                            self.mh.update_transcription_state(transcription,"Approved")                                          
+                    print("Approved transcription ids: %s"%transcription_ids)
             else:
                 feedback = rejected_feedback%(assignment_id,max_rej_wer[0],max_rej_wer[1],average_wer)
                 self.conn.reject_assignment(assignment_id,feedback)

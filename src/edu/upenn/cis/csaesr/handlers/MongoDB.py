@@ -38,7 +38,6 @@ class MongoHandler(object):
         self.c["transcription_hits"] = self.db.transcription_hits
         self.c["disfluency_hits"] = self.db.disfluency_hits
         self.c["second_pass_hits"] = self.db.second_pass_hits
-        self.c["turkers"] = self.db.turkers
         self.c["assignments"] = self.db.assignments
         self.c["workers"] = self.db.workers
         
@@ -330,17 +329,7 @@ class MongoHandler(object):
                                                  update = { "$set" : {"processing":t}}
                                                 )
         return max_q
-    
-    def initialize_test_db(self):
-        audio_clips = [{ "_id" : "12345", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "state" : "New" },
-                       { "_id" : "54321", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "state" : "New" },
-                       { "_id" : "98765", "audio_clip_url" : "http://www.cis.upenn.edu/~tturpen/wavs/testwav.wav", "reference" : None, "state" : "New" }]
-        audio_clip_queue = [{"audio_clip_id" : "12345", "priority" : 1, "processing" : None, "max_size" : 3 },
-                            {"audio_clip_id" : "54321", "priority" : 1, "processing" : None, "max_size" : 3 },
-                            {"audio_clip_id" : "98765", "priority" : 1, "processing" : None, "max_size" : 3 }]
-        transcriptions = [{ "assignment_id" : "21B85OZIZEHRPTEQZZH5HWPXNKOBZK", "audio_clip_id" : "12345", "worker_id" : "A2WBBX5KW5W6GY", "state" : "Submitted", "transcription" : "This is the first transcription." },
-                          { "assignment_id" : "21B85OZIZEHRPTEQZZH5HWPXNKOBZK", "audio_clip_id" : "12345.0", "worker_id" : "A2WBBX5KW5W6GY", "state" : "Submitted", "transcription" : "This is the second transcription.|This is the third transcription." }]
-    
+
 def main():
     mh = MongoHandler()
     t = Turker(5)
