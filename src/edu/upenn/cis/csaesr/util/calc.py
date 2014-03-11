@@ -13,9 +13,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 def main():
-    ref = "Humpty dumpty broke his head."
-    hyp = "Humpty broke his nose on the sidewalk by the church."
-    print(wer(ref.split(),hyp.split()))
+    ref = ["Humpty","dumpty","broke","his","head."]
+    hyp = ["Humpty","dumpty","broke","his","nose",""]#"on","the","sidewalk","by","the","church."]
+    print(wer(ref,hyp))
     
 CHARACTER_ERROR_RATE_THRESHOLD = .4
 MINMUM_CHARACTERS_FOR_CER = 5
