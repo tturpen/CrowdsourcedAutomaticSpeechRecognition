@@ -12,59 +12,21 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from text.NormalizationDictionaries import example_sents, numeric_dict
-d ={    "th":{    "4" : {"1": "fourteenth",
-               "OTHER" : "forth"},
-        "5" : {"1" : "fifteenth",
-               "OTHER" :"fifth"},
-        "6" : {"1" : "sixteenth",
-               "OTHER" : "sixth"},
-        "7" : {"1" : "seventeenth",
-               "OTHER" : "seventh"},
-        "8" : {"1" : "eighteenth",
-               "OTHER" : "eighth"},
-        "9" : {"1" : "nineteenth",
-               "OTHER" : "ninth"},
-        "2" : {"1": "twelfth"},
-        "1" : {"1": "eleventh"},
-        "0" : {"2":"twentieth"}},
-    "nd": {"2": "second"},
-    "rd": {"3" : "third"},
-    "st": {"1" : "first"},
-     "1" : {"1" : "eleven",
-        "OTHER" : "one"},
-     "2" : {"1" : "twelve",
-        "OTHER" : "two"},
-     "3" : {"1" : "thirteen",
-        "OTHER" : "three"},
-     "4" : {"1" : "forteen",
-        "OTHER" : "four"},
-     "5" : {"1" : "fifteen",
-        "OTHER" : "five"},
-     "6" : {"1" : "sixteen",
-        "OTHER" : "six"},
-     "7" : {"1" : "seventeen",
-        "OTHER" : "seven"},
-     "8" : {"1" : "eighteen",
-        "OTHER" : "eight"},
-     "9" : {"1" : "nineteen",
-        "OTHER" : "nine"},
-     "0" :{    "2" : "twenty",
-        "3" : "thirty",
-        "4" : "forty",
-                          "5" : "fifty",
-                          "6" : "sixty" ,
-                          "7" : "seventy",
-                          "8" : "eighty",
-                          "9" : "ninety",
-                          "1" : "ten"}}
+from text.NormalizationDictionaries import example_sents, singles, ones, teens, tens, places, ones_tens_dict
+
 class Normalize(object):
     """Normalization should be applied equally to all transcriptions."""
 
     def __init__(self):
-        self.all_procs = {"to_lower" : self.to_lower,
+        self.sent_procs = {"strip_whitespace": self.strip_whitespace}
+        self.word_procs = {"to_lower" : self.to_lower,
                           "from_hyphen" : self.from_hyphen,
-                          "from_numeric" : self.from_numeric}
+                          "from_numeric" : self.from_numeric
+                          }
+        
+    
+    def strip_whitespace(self,sent):
+        return sent.lstrip().strip()
     
     def to_lower(self,word):
         return [word.lower()]
@@ -72,51 +34,98 @@ class Normalize(object):
     def from_hyphen(self,word):
         return word.split("-")
     
-    def proc_dict(self,process_dict,orig,correct=None):
-        for func in process_dict:
+    def proc_dict(self,sent_procs,word_procs,hyp,ref=None):
+        for func in sent_procs:
+            hyp = sent_procs[func](hyp)
+            ref = sent_procs[func](ref)
+            
+        for func in word_procs:            
             result = []
-            for word in orig:
-                result.extend(process_dict[func](word))
-            orig = result
-        if correct:
-            print(result==correct)
+            for word in hyp:
+                result.extend(word_procs[func](word))
+            hyp = result
+        if ref:
+            print(result==ref)
         return result    
     
-    def from_numeric(self,word):
-        result = []
+    def ones_tens(self,d,word):
+        found = False
         for key in d:
-            if word.endswith(key):                
-                i = -len(key)-1
-                if len(word) >= abs(i) and word[i] in d[key]:
-                    if type(d[key][word[i]]) == dict:
-                        #th, nd rd
-                        if word[i-1] in d[key][word[i]]:
-                            return (word[:i-1],d[key][word[i]][word[i-1]],"")                        
-                        else:
-                            return (word[:i-1],d[key][word[i]]["OTHER"],"")                    
-                    else:
-                        #tens: sixteen, ten, eleven etc.
-                        if word[i] in d[key]:
-                            return (word[:i],d[key][word[i]],"")                   
-                        else:
-                            #normal ones
-                            return (word[:i],"", d[key]["OTHER"])
+            if word.endswith(key):
+                if type(d[key]) == dict:
+                    return (word[:-len(key)],self.ones_tens(d[key],word[:-len(key)]))
                 else:
-                    #ones
-                    return (word[:i],"", d[key]["OTHER"])    
-        pass
+                    return (word[:-len(key)],d[key])
+                found = True
+        if not found:
+            return d["OTHER"]
+        return ""
+    
+    def base_tup(self,tups):
+        if type(tups[-1]) == str:
+            return tups
+        else:
+            return self.base_tup(tups[-1])
+            
+    def from_numeric(self,numeric_word):
+        result = []
+        word =  self.ones_tens(ones_tens_dict, numeric_word)
+        remainder, word = self.base_tup(word)
+        if not remainder:
+            return word
+        if word:
+            result.append(word)
+        place = ""
+        for one in ones:
+            if word in one:
+                place = "ones" 
+        #If not ones then word is tens, so remainder is hundreds
+        if place == "ones":
+            for i, ten in enumerate(tens):
+                if i > 1 and remainder[-1] == str(i):
+                    result.append(ten)
+                    remainder = remainder[:-1]
+                    break
+            else:
+                #zero tens digit
+                remainder = remainder[:-1]
+        for place in places:
+            if remainder and remainder[-1] in singles:
+                next = singles[remainder[-1]]
+                if not word and numeric_word.endswith("th"):            
+                    result.append(place+"th")
+                else:
+                    result.append(place)
+                result.append(next)
+                remainder = remainder[:-1]
+            elif remainder:
+                #zero digit
+                remainder = remainder[:-1]
+                
+        return result[::-1]    
     
 def main():
     #===========================================================================
     normalizer = Normalize()
     # for sent in example_sents:
-    #     normalizer.proc_dict(normalizer.all_procs,example_sents[sent]["orig"],example_sents[sent]["correct"])
+    #     normalizer.proc_dict(normalizer.sent_procs,normalizer.word_procs,example_sents[sent]["hyp"],example_sents[sent]["ref"])
     #===========================================================================
     #print(normalizer.from_numeric("216"))
     #print(normalizer.from_numeric("6"))
     #print(normalizer.from_numeric("20"))
     #print(normalizer.from_numeric("620th"))
     print(normalizer.from_numeric("621st"))
+    print(normalizer.from_numeric("11"))
+    print(normalizer.from_numeric("11th"))
+    print(normalizer.from_numeric("3rd"))
+    print(normalizer.from_numeric("611th"))
+    print(normalizer.from_numeric("611"))
+    print(normalizer.from_numeric("21"))
+    print(normalizer.from_numeric("20"))
+    print(normalizer.from_numeric("2342nd"))
+    print(normalizer.from_numeric("600"))
+    print(normalizer.from_numeric("4600th"))
+    print(normalizer.from_numeric("1112th"))
         
     
 if __name__=="__main__":
