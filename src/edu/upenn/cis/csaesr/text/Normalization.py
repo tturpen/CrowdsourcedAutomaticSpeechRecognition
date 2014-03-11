@@ -19,12 +19,32 @@ class Normalize(object):
 
     def __init__(self):
         self.sent_procs = {"strip_whitespace": self.strip_whitespace}
-        self.word_procs = {"to_lower" : self.to_lower,
+        self.word_procs = {"split_abbrev": self.split_abbreviations,
+                           "to_lower" : self.to_lower,
                           "from_hyphen" : self.from_hyphen,
                           "from_numeric" : self.from_numeric
                           }
         
-    
+    def split_abbreviations(self,word):
+        """Split alphanumeric words"""
+        result = []
+        while True:
+            #word contains letters and numbers, split left from right            
+            starts_alpha = word[0].isalpha()            
+            for i,c in enumerate(word):
+                if not c.isalpha() and starts_alpha:
+                    result.append(word[:i])
+                    word = word[i:]
+                    break
+                elif c.isalpha() and not starts_alpha:
+                    result.append(word[:i])
+                    word = word[i:]
+                    break            
+            if not (word.isalnum() and not word.isdigit() and not word.isalpha()):
+                result.append(word)
+                break
+        return result
+        
     def strip_whitespace(self,sent):
         return sent.lstrip().strip()
     
@@ -126,6 +146,7 @@ def main():
     print(normalizer.from_numeric("600"))
     print(normalizer.from_numeric("4600th"))
     print(normalizer.from_numeric("1112th"))
+    print(normalizer.split_abbreviations("ABC1234ABC1")== ["ABC","1234","ABC","1"]) 
         
     
 if __name__=="__main__":
