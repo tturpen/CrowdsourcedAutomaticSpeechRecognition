@@ -172,7 +172,6 @@ class HitHandler():
         
         #reward calculation
         reward = reward_per_clip*len(audio_clip_urls)
-        print(html)
         try:
             return self.conn.create_hit(title=hit_title,
                                     question=html_question,
@@ -184,7 +183,9 @@ class HitHandler():
         except MTurkRequestError as e:
             if e.reason != "OK":
                 raise 
-            else: return False
+            else:
+                print(e) 
+                return False
         return False
         
         

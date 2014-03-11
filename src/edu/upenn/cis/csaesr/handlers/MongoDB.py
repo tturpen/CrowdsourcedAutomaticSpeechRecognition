@@ -28,7 +28,7 @@ class MongoHandler(object):
     def __init__(self):
         client = MongoClient(self.default_db_loc)
         self.queue_revive_time = 5       
-        self.db = client.transcription_db
+        self.db = client.production_transcription_db
         self.c = {}#dictionary of collections
         self.c["audio_sources"] = self.db.audio#The full audio files
         self.c["audio_clips"] = self.db.audio_clips#portions of the full audio files
@@ -52,6 +52,9 @@ class MongoHandler(object):
     def get_artifacts(self,collection,param,values,field=None,refine={}):
         return [self.get_artifact(collection,{param:val},field,refine) for val in values]
     
+    def get_all_artifacts(self,collection):
+        return self.c[collection].find()
+    
     def get_artifact(self,collection,search,field=None,refine={}):
         responses = self.c[collection].find(search,refine)\
                     if refine else self.c[collection].find(search)
@@ -72,6 +75,15 @@ class MongoHandler(object):
                     #if the q is bigger than the q with the most clips
                     max_q = max_sizes[q][:q]
         return max_q
+    
+    def clips_already_in_hit(self,clip_pairs):
+        clips_in_hits = []
+        for pair in clip_pairs:
+            for hit in self.get_all_artifacts("transcription_hits"):
+                if pair in hit["clips"]:
+                    clips_in_hits.append(pair[1])#Append the clip id
+                    self.logger.info("Audio clip(%s) already in HIT(%s)"(pair[1],hit["_id"]))
+        return clips_in_hits
     
     def revive_audio_clip_queue(self):
         """If an audio clip in the queue has been processing for more than
@@ -118,6 +130,14 @@ class MongoHandler(object):
             can be created with an upsert."""            
         self.c[collection].update(search,document,upsert = True)
         
+    def create_artifact(self,collection,search,document):
+        art_id = self.get_artifact(collection, search, "_id")
+        if not art_id:
+            self.c[collection].insert(document)
+            art_id = self.get_artifact(collection, document,"_id")
+            self.logger.info("Created %s artifact(%s) "%(collection,art_id))
+        return art_id       
+        
     def create_transcription_hit_artifact(self,hit_id,hit_type_id,clip_queue,new_state):
         if type(clip_queue) != list:
             raise IOError
@@ -126,9 +146,8 @@ class MongoHandler(object):
                      "hit_type_id": hit_type_id,
                      "clips" : clips,
                      "state": new_state}
-        self.upsert_artifact("transcription_hits",{"_id": hit_id},document)
-        self.logger.info("Updated transcription hit %s "%hit_id)
-        return True
+        art_id = self.create_artifact("transcription_hits",{"_id": hit_id},document)
+        return art_id
     
     def create_assignment_artifact(self,assignment,transcription_ids,state):
         """Create the assignment document with the transcription ids.
@@ -143,9 +162,8 @@ class MongoHandler(object):
                      "worker_id" : assignment.WorkerId,
                      "transcriptions" : transcription_ids,
                      "state": state}
-        self.upsert_artifact("assignments", {"_id": assignment_id},document)
-        self.logger.info("Created Assignment document, assignment ID(%s) "%assignment_id)
-        return True
+        art_id = self.create_artifact("assignments", {"_id": assignment_id},document)        
+        return art_id
     
     def create_audio_source_artifact(self,uri,disk_space,length_seconds,
                                      sample_rate,speaker_id,
@@ -153,7 +171,13 @@ class MongoHandler(object):
         """Each audio source is automatically an audio clip,
             Therefore the reference transcription can be found
             by referencing the audio clip assigned to this source.
-            For turkers, speaker id will be their worker id"""        
+            For turkers, speaker id will be their worker id"""    
+        search = {"uri" : uri,
+                    "disk_space" : disk_space,
+                    "length_seconds" : length_seconds,
+                    "sample_rate" : sample_rate,
+                    "speaker_id" : speaker_id,
+                    "encoding" : encoding}    
         document = {"uri" : uri,
                     "disk_space" : disk_space,
                     "length_seconds" : length_seconds,
@@ -163,8 +187,8 @@ class MongoHandler(object):
                     "encoding" : encoding,
                     "state" : state}
         #soft source checking
-        self.upsert_artifact("audio_sources", document, document)
-        return self.get_artifact("audio_sources",document,field="_id")
+        art_id = self.create_artifact("audio_sources", search, document)
+        return art_id
         
     def create_reference_transcription_artifact(self,audio_clip_id,words,level):
         """Create the reference transcription given the audio clip id
@@ -172,8 +196,8 @@ class MongoHandler(object):
         document = {"audio_clip_id" : audio_clip_id,
                     "transcription" : words,
                     "level" : level}
-        self.upsert_artifact("reference_transcriptions",document,document)
-        return self.get_artifact("reference_transcriptions",document,field="_id")
+        art_id = self.create_artifact("reference_transcriptions",document,document)
+        return art_id
     
     def create_worker_artifact(self,worker_id):
         document = {"_id": worker_id,
@@ -183,14 +207,21 @@ class MongoHandler(object):
                     "prequalification_assignment_id":None,
                     "primary_author_merged_transcription_ids":[],
                     "state":"New"}
-        self.upsert_artifact("workers",{"_id": worker_id},document)
-        return self.get_artifact("workers",document,field="_id")
+        art_id = self.create_artifact("workers",{"_id": worker_id},document)
+        return art_id
     
     def create_audio_clip_artifact(self,source_id,source_start_time,source_end_time,
                                    uri,http_url,length_seconds,
                                    disk_space,reference_transcription_id=None,
                                    state="Sourced"):
         """A -1 endtime means to the end of the clip."""
+        search = {"source_id" : source_id,
+                    "source_start_time" :source_start_time,
+                    "source_end_time" : source_end_time,
+                    "uri" : uri,
+                    "http_url": http_url,
+                    "length_seconds" : length_seconds,
+                    "disk_space" : disk_space}
         document = {"source_id" : source_id,
                     "source_start_time" :source_start_time,
                     "source_end_time" : source_end_time,
@@ -200,8 +231,8 @@ class MongoHandler(object):
                     "disk_space" : disk_space,
                     "reference_transcription_id" : reference_transcription_id,
                     "state" : state}
-        self.upsert_artifact("audio_clips", document, document)
-        return self.get_artifact("audio_clips",document,field="_id")
+        art_id = self.create_artifact("audio_clips", search, document)
+        return art_id
     
     def update_transcription_state(self,transcription,state):
         """Use secondary ID audio clip + assignment"""

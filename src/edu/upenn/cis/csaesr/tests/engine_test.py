@@ -24,10 +24,10 @@ from shutil import copyfile
 import logging
 import os
 
-#HOST='mechanicalturkamazonaws.com'
-HOST='mechanicalturk.sandbox.amazonaws.com'
+HOST='mechanicalturk.amazonaws.com'
+#HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
-WER_THRESHOLD = .5
+WER_THRESHOLD = .33
 
 #Init Logger
 logger = logging.getLogger("transcription_engine")
@@ -97,7 +97,12 @@ class TranscriptionPipelineHandler():
                 reward_per_clip = 0.02
                 max_assignments = 3
                 estimated_cost = self.hh.estimate_html_HIT_cost(clip_pairs,reward_per_clip,max_assignments)
-                if self.balance - estimated_cost >= 0:
+                clips_in_hits = self.mh.clips_already_in_hit(clip_pairs)
+                if clips_in_hits:
+                    #If one or more clips are already in a HIT, remove it from the queue
+                    self.mh.remove_audio_clips_from_queue(clips_in_hits)
+                elif self.balance - estimated_cost >= 250:
+                    #if we have enough money, create the HIT
                     response = self.hh.make_html_transcription_HIT(clip_pairs,hit_title,
                                                  question_title, description, keywords)
                     self.balance = self.balance - estimated_cost
@@ -114,15 +119,24 @@ class TranscriptionPipelineHandler():
                     pass
         return False
             
-    def audio_clip_lifecycle_from_hit_to_submitted(self):
+    def load_assignments_hit_to_submitted(self):
         """Check all assignments for audio clip IDs.
-            Update the audio clips."""
+            Update the audio clips.
+            This is a non-destructive load of the assignments from MTurk"""
         hits = self.conn.get_all_hits()
         for hit in hits:
             transcription_dicts = [{}]
             hit_id = hit.HITId
             assignments = self.conn.get_assignments(hit_id)
-            for assignment in assignments:                
+            have_all_assignments = True
+            assignment_ids = []
+            for assignment in assignments:
+                assignment_ids.append(assignment.AssignmentId)  
+                if self.mh.get_artifact("assignments",{"_id":assignment.AssignmentId}):
+                    #We create assignments here, so if we already have it, skip
+                    continue   
+                else:
+                    have_all_assignments = False                                         
                 transcription_ids = []                
                 transcription_dicts = self.ah.get_assignment_submitted_transcriptions(assignment)   
                 if transcription_dicts and len(transcription_dicts)==10:
@@ -141,9 +155,9 @@ class TranscriptionPipelineHandler():
                     self.mh.create_assignment_artifact(assignment,
                                                    transcription_ids,
                                                    "Submitted")
-            if assignments:
+            if assignments and not have_all_assignments:
                 self.mh.update_transcription_hit_state(hit_id,"Submitted")
-            print("Transcriptions HIT(%s) submitted assignments: %s "%(hit_id,transcription_dicts))
+            print("Transcriptions HIT(%s) submitted assignments: %s "%(hit_id,assignment_ids))
             
     def assignment_submitted_approved(self):
         """For all submitted assignments,
@@ -156,7 +170,7 @@ class TranscriptionPipelineHandler():
         rejected_feedback = "I'm sorry but your work in assignment(%s) was rejected because" +\
                             " one or more of your transcriptions " +\
                             " had a word error rate of %s, when the maximum acceptable"+\
-                            " word error rate was %s. You average word error rate for the"+\
+                            " word error rate was %s. Your average word error rate for the"+\
                             " assignment was(%s)"
         accepted_feedback = "Your average word error rate on assignment(%s) was %s."+\
                             " Assignment accepted! Thanks for your hard work."
@@ -191,7 +205,7 @@ class TranscriptionPipelineHandler():
                             denied.append((reference_transcription,new_transcription))
                             approved = False
             average_wer = total_wer/len(transcriptions)
-            if approved or not approved:
+            if approved:
                 try:
                     self.conn.approve_assignment(assignment_id, accepted_feedback%(assignment_id,average_wer))
                 except MTurkRequestError as e:
@@ -205,12 +219,15 @@ class TranscriptionPipelineHandler():
                             self.mh.update_transcription_state(transcription,"Approved")                                          
                     print("Approved transcription ids: %s"%transcription_ids)
             else:
+                #Don't deny for now
                 feedback = rejected_feedback%(assignment_id,max_rej_wer[0],max_rej_wer[1],average_wer)
-                self.conn.reject_assignment(assignment_id,feedback)
-                self.mh.update_assignment_state(assignment,"Denied")    
-                print("Assignments not aproved %s "%denied)
+                logger.info(feedback)
+#                 self.conn.reject_assignment(assignment_id,feedback)
+#                 self.mh.update_assignment_state(assignment,"Denied")    
+#                 print("Assignments not aproved %s "%denied)
             #Update the worker
-            self.mh.add_assignment_to_worker(worker_id,(assignment_id,average_wer))
+            if approved:
+                self.mh.add_assignment_to_worker(worker_id,(assignment_id,average_wer))
             
     def recalculate_worker_assignment_wer(self):
         """For all submitted assignments,
@@ -379,10 +396,19 @@ class TranscriptionPipelineHandler():
             if len(assignments) == 0:
                 if raw_input("Remove hit with no submitted assignments?(y/n)") == "y":
                     try:
-                        self.conn.disable_hit(hit.HITId)
+                        self.conn.disable_hit(hit_id)
+                        clips = self.mh.get_artifact("transcription_hits",{"_id": hit_id},"clips")
                         self.mh.remove_transcription_hit(hit_id)
+                        self.mh.update_audio_clips_state(clips, "Referenced")
                     except MTurkRequestError as e:
                         raise e
+            else:
+                if raw_input("Remove hit with %s submitted assignments?(y/n)"%len(assignments)) == "y":
+                    try:
+                        self.conn.disable_hit(hit_id)
+                    except MTurkRequestError as e:
+                        raise e
+                
         
 #------------------------------------------------------------------------------ 
             #-------------------------------- allhits = self.conn.get_all_hits()
@@ -397,10 +423,11 @@ def main():
     audio_clip_id = 12345
     tph = TranscriptionPipelineHandler()
     audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/ind_trn"
+    #audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/dep_trn"
     prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
     base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
     selection = 0
-    init_clip_count = 100
+    init_clip_count = 10000
     while selection != "10":
         selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
                                  1: AudioSource-FileToClipped: Initialize Resource Management audio source files to %d queueable(Referenced) clips
@@ -422,7 +449,7 @@ def main():
         elif selection == "2":
             tph.audio_clip_referenced_to_hit()
         elif selection == "3":
-            tph.audio_clip_lifecycle_from_hit_to_submitted()
+            tph.load_assignments_hit_to_submitted()
         elif selection == "4":
             tph.assignment_submitted_approved()
         elif selection == "5":
