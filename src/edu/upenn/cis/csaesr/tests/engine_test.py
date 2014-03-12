@@ -18,6 +18,7 @@ from handlers.MongoDB import MongoHandler
 from data.structures import TranscriptionHit
 from handlers.Audio import WavHandler, PromptHandler
 from handlers.Exceptions import WavHandlerException, PromptNotFound
+from filtering.Standard import Filter
 from util.calc import wer, cer_wer
 from shutil import copyfile
 
@@ -61,6 +62,7 @@ class TranscriptionPipelineHandler():
         self.mh = MongoHandler()
         self.wh = WavHandler()
         self.ph = PromptHandler()
+        self.filter = Filter(self.mh,self.conn)
         self.balance = self.conn.get_account_balance()[0].amount
         
     def generate_audio_HITs(self):
@@ -169,42 +171,21 @@ class TranscriptionPipelineHandler():
         assignments = self.mh.get_artifacts_by_state("assignments", "Submitted")
         rejected_feedback = "I'm sorry but your work in assignment(%s) was rejected because" +\
                             " one or more of your transcriptions " +\
-                            " had a word error rate of %s, when the maximum acceptable"+\
-                            " word error rate was %s. Your average word error rate for the"+\
-                            " assignment was(%s)"
+                            " had a word error rate above the maximum acceptable"+\
+                            " word error rate of %s. Omitted words and words that "+\
+                            " differed by more than %s "+\
+                            " characters were counted as an error."
         accepted_feedback = "Your average word error rate on assignment(%s) was %s."+\
                             " Assignment accepted! Thanks for your hard work."
         for assignment in assignments:
             assignment_id = assignment["_id"]
-            denied = []
-            #If no transcriptions have references then we automatically approve the HIT
-            approved = True
             transcription_ids = assignment["transcriptions"]
             transcriptions = self.mh.get_artifacts("transcriptions","_id",transcription_ids)
+
             worker_id = assignment["worker_id"]
             worker_id = self.mh.create_worker_artifact(worker_id)
             
-            max_rej_wer = (0.0,0.0)
-            total_wer = 0.0
-            for transcription in transcriptions:
-                #Normalize the transcription
-                #self.mh.normalize_transcription
-                reference_id = self.mh.get_artifact_by_id("audio_clips",transcription["audio_clip_id"],"reference_transcription_id")
-                if reference_id:
-                    reference_transcription = self.mh.get_artifact("reference_transcriptions",
-                                                                   {"_id": reference_id},"transcription")
-                    new_transcription = transcription["transcription"].split(" ")
-                    if reference_transcription:
-                        transcription_wer = cer_wer(reference_transcription,new_transcription)
-                        total_wer += transcription_wer
-                        if transcription_wer < WER_THRESHOLD:
-                            self.mh.update_transcription_state(transcription,"Confirmed")
-                            logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
-                        else:
-                            max_rej_wer = (transcription_wer,WER_THRESHOLD)
-                            denied.append((reference_transcription,new_transcription))
-                            approved = False
-            average_wer = total_wer/len(transcriptions)
+            approved, average_wer  = self.filter.approve_assignment(assignment)
             if approved:
                 try:
                     self.conn.approve_assignment(assignment_id, accepted_feedback%(assignment_id,average_wer))
@@ -220,7 +201,7 @@ class TranscriptionPipelineHandler():
                     print("Approved transcription ids: %s"%transcription_ids)
             else:
                 #Don't deny for now
-                feedback = rejected_feedback%(assignment_id,max_rej_wer[0],max_rej_wer[1],average_wer)
+                feedback = rejected_feedback%(assignment_id,self.filter.WER_THRESHOLD,self.filter.CER_THRESHOLD)
                 logger.info(feedback)
 #                 self.conn.reject_assignment(assignment_id,feedback)
 #                 self.mh.update_assignment_state(assignment,"Denied")    

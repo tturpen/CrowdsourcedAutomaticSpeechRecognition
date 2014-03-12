@@ -22,7 +22,8 @@ class Normalize(object):
         self.word_procs = {"split_abbrev": self.split_abbreviations,
                            "to_lower" : self.to_lower,
                           "from_hyphen" : self.from_hyphen,
-                          "from_numeric" : self.from_numeric
+                          "from_numeric" : self.from_numeric,
+                          "split_apostrophe": self.from_apostrophe
                           }
         
     def split_abbreviations(self,word):
@@ -54,7 +55,10 @@ class Normalize(object):
     def from_hyphen(self,word):
         return word.split("-")
     
-    def proc_dict(self,sent_procs,word_procs,hyp,ref=None):
+    def from_apostrophe(self,word):
+        return [word.replace("+s","'s")]
+    
+    def compare_sents(self,sent_procs,word_procs,hyp,ref=None):
         for func in sent_procs:
             hyp = sent_procs[func](hyp)
             ref = sent_procs[func](ref)
@@ -67,6 +71,20 @@ class Normalize(object):
         if ref:
             print(result==ref)
         return result    
+    
+    def standard_normalization(self,sent):
+        sent_procs = self.sent_procs
+        word_procs = self.word_procs
+        for func in sent_procs:
+            sent = sent_procs[func](sent)
+            
+        for func in word_procs:            
+            result = []
+            for word in sent:
+                result.extend(word_procs[func](word))
+            hyp = result
+        return hyp    
+        
     
     def ones_tens(self,d,word):
         found = False
@@ -128,7 +146,7 @@ def main():
     #===========================================================================
     normalizer = Normalize()
     # for sent in example_sents:
-    #     normalizer.proc_dict(normalizer.sent_procs,normalizer.word_procs,example_sents[sent]["hyp"],example_sents[sent]["ref"])
+    #     normalizer.compare_sents(normalizer.sent_procs,normalizer.word_procs,example_sents[sent]["hyp"],example_sents[sent]["ref"])
     #===========================================================================
     #print(normalizer.from_numeric("216"))
     #print(normalizer.from_numeric("6"))
