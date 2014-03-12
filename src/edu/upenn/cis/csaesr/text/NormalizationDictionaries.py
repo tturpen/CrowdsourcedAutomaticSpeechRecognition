@@ -39,6 +39,7 @@ singles = {"OTHER": "",
            "7": "seven",
            "8": "eight",
            "9": "nine"}
+suffixes = ["th","nd","rd","st"]
 
 ones = [("",""),("one","first"),("two","second"),("three","third"),("four","fourth"),
         ("five","fifth"),("six","sixth"),("seven","seventh"),("eight","eighth"),("nine","ninth")]

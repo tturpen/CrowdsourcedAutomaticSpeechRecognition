@@ -21,10 +21,9 @@ class Filter(object):
     WER_THRESHOLD = .75
     CER_THRESHOLD = 2
     
-    def __init__(self,mongo_handler):
+    def __init__(self,mongo_handler=None):
         self.mh = mongo_handler
-        self.augment_funcs = {"cat": self.cat,
-                              "normalize": self.normalize}
+
         self.normalizer = Normalize()
         
         self.logger = logging.getLogger("transcription_engine.filter_standard")   
@@ -39,27 +38,28 @@ class Filter(object):
             if i < len(this)-1:
                 if this[i] + this[i+1] in that:
                     this[i] = this[i] + this[i+1]
-                    this.pop([i+1])
+                    this.pop(i+1)
         return this
     
-    def normalize(self,sent):
+    def get_normalized_list(self,sent):
         """Normalize the sentence."""
         return self.normalizer.standard_normalization(sent)
     
     def approve_transcription(self,reference,hypothesis):
-        for func in self.augment_funcs:
-            reference = self.augment_funcs[func](reference)
-            hypothesis = self.augment_funcs[func](hypothesis)    
-        wer = self.get_wer(reference,hypothesis)
+        #Full sentence to normalized list
+        reference = self.get_normalized_list(reference)
+        hypothesis = self.get_normalized_list(hypothesis)
         
+        reference = self.cat(reference,hypothesis)
+        hypothesis = self.cat(hypothesis,reference)        
+                
+        wer = self.get_wer(reference,hypothesis)        
         if wer <= self.WER_THRESHOLD:
             return True, wer
         else:
-            return False, wer
-               
-                                   
+            return False, wer      
                  
-    def approve_assignment(self,mh,transcriptions):
+    def approve_assignment(self,transcriptions):
         denied = []
         max_rej_wer = (0.0,0.0)
         total_wer = 0.0
@@ -71,8 +71,10 @@ class Filter(object):
             if reference_id:
                 reference_transcription = self.mh.get_artifact("reference_transcriptions",
                                                                {"_id": reference_id},"transcription")
-                hypothesis_transcription = transcription["transcription"].split(" ")
+                hypothesis_transcription = transcription["transcription"]
                 if reference_transcription:
+                    #References are stored as a list of words
+                    reference_transcription = " ".join(reference_transcription)
                     approval, wer = self.approve_transcription(reference_transcription,hypothesis_transcription)
                     total_wer += wer
                     if approval:

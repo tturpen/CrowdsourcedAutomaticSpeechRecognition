@@ -185,7 +185,7 @@ class TranscriptionPipelineHandler():
             worker_id = assignment["worker_id"]
             worker_id = self.mh.create_worker_artifact(worker_id)
             
-            approved, average_wer  = self.filter.approve_assignment(assignment)
+            approved, average_wer  = self.filter.approve_assignment(transcriptions)
             if approved:
                 try:
                     self.conn.approve_assignment(assignment_id, accepted_feedback%(assignment_id,average_wer))

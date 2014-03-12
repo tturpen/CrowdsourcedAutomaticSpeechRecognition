@@ -12,23 +12,31 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from text.NormalizationDictionaries import example_sents, singles, ones, teens, tens, places, ones_tens_dict
+from text.NormalizationDictionaries import example_sents, singles, ones, teens, tens, places, ones_tens_dict, suffixes
+from text.Segmentation import WordSegmenter
+from collections import OrderedDict
+
 
 class Normalize(object):
     """Normalization should be applied equally to all transcriptions."""
 
     def __init__(self):
         self.sent_procs = {"strip_whitespace": self.strip_whitespace}
-        self.word_procs = {"split_abbrev": self.split_abbreviations,
-                           "to_lower" : self.to_lower,
-                          "from_hyphen" : self.from_hyphen,
-                          "from_numeric" : self.from_numeric,
-                          "split_apostrophe": self.from_apostrophe
-                          }
+        self.word_procs = OrderedDict([("to_lower" , self.to_lower),
+                                       ("split_abbrev", self.split_abbreviations),
+                                       ("split_apostrophe", self.from_apostrophe),                                       
+                          ("from_hyphen" , self.from_hyphen),
+                          ("from_numeric" , self.from_numeric),
+                          ])
+        self.segementer = WordSegmenter("en")
         
     def split_abbreviations(self,word):
         """Split alphanumeric words"""
         result = []
+        if not (word.isalnum() and not word.isdigit() and not word.isalpha())\
+            or any([word.endswith(suffix) for suffix in suffixes]):
+            #If not letters and digits
+            return [word]
         while True:
             #word contains letters and numbers, split left from right            
             starts_alpha = word[0].isalpha()            
@@ -78,12 +86,13 @@ class Normalize(object):
         for func in sent_procs:
             sent = sent_procs[func](sent)
             
+        sent = self.segementer.get_word_list(sent)
         for func in word_procs:            
             result = []
             for word in sent:
                 result.extend(word_procs[func](word))
-            hyp = result
-        return hyp    
+            sent = result
+        return sent    
         
     
     def ones_tens(self,d,word):
@@ -106,13 +115,20 @@ class Normalize(object):
             return self.base_tup(tups[-1])
             
     def from_numeric(self,numeric_word):
+        if numeric_word.isalpha() or \
+            not any([numeric_word.endswith(suffix) for suffix in suffixes]) and\
+            not numeric_word.isdigit():
+            return [numeric_word]
         result = []
         word =  self.ones_tens(ones_tens_dict, numeric_word)
+        if not word:
+            return [numeric_word]
         remainder, word = self.base_tup(word)
-        if not remainder:
-            return word
         if word:
             result.append(word)
+        if not remainder:
+            return [word]
+
         place = ""
         for one in ones:
             if word in one:
@@ -154,6 +170,7 @@ def main():
     #print(normalizer.from_numeric("620th"))
     print(normalizer.from_numeric("621st"))
     print(normalizer.from_numeric("11"))
+    print(normalizer.from_numeric("13"))
     print(normalizer.from_numeric("11th"))
     print(normalizer.from_numeric("3rd"))
     print(normalizer.from_numeric("611th"))
