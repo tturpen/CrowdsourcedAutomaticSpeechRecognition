@@ -1,0 +1,95 @@
+<html><head>
+<title>${title}</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<script type='text/javascript' src='https://s3.amazonaws.com/mturk-public/externalHIT_v1.js'>
+</script>
+<script type='text/javascript'>
+  function disableInput(){
+  hit_id=getParameterByName("assignmentId");
+  if (hit_id == "ASSIGNMENT_ID_NOT_AVAILABLE"){
+		${disable_script}
+  }
+  };
+  function getParameterByName(name) {
+    name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+    var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+        results = regex.exec(location.search);
+    return results == null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
+  }
+  function validateForm(){
+	  if (window.validate)
+		  return true;
+	  else
+              {
+                   alert("Please make sure to listen to every audio clip.");
+                   return false;
+              }
+  }
+  function disableSubmitButton(){
+	  window.validate = false;
+	  document.getElementById("submitButton").setAttribute('onclick','return validateForm();');
+  }
+  
+  function enableSubmitButton(audioId){
+	  window.listenedIds[window.idsCount] = audioId;
+	  window.idsCount += 1;
+	  window.validate = compareArrays(window.audioIds,window.listenedIds);
+  }
+
+  function compareArrays(ref,hyp){
+  var reflen = ref.length;
+  var hyplen = hyp.length;
+  var same = false;
+
+  for(var i = 0; i < reflen; i++){
+     same = false;
+
+     for(var j = 0; j < hyplen; j++){
+	if (ref[i].localeCompare(hyp[j]) === 0) {
+			same = true;
+			}
+     }
+
+     if(!same){
+	return false;
+	}
+  }
+  return true;
+}
+
+
+  function loadFuncs(){
+	  disableInput();
+	  disableSubmitButton();
+	  window.audioIds = [${audio_id}];
+	  window.listenedIds = new Array();
+	  window.idsCount = 0;
+  }
+  window.onload = loadFuncs;  
+  function play(id){
+	  document.getElementById(id).play();
+  }
+</script>
+<style type="text/css">
+  .row {  height:auto !important; }
+  .list {display: none; }
+  .show {display: none; }
+  .hide:target + .show {display: inline; }
+  .hide:target {display: inline; }
+  .hide:target ~ .list {display:inline; }
+  @media print { .hide, .show {display: none; }}
+</style>
+</head><body><form name="mturk_form" method="post" id="mturk_form" action="https://www.mturk.com/mturk/externalSubmit"><input type="hidden" value="" name="assignmentId" id="assignmentId" />
+<div id="title">
+  <h3>Record Yourself Speaking the Prompt</h3>
+
+<div class="highlight-box">
+  <a href="#hide1" class="hide" id="hide1">Expand Example</a>
+  <a href="#show1" class="show" id="show1">Collapse Example</a>
+  <ul>
+	${description}
+  </ul>
+</div>
+<iframe src="http://vocaroo.com/?minimal" width="525" height="450" frameborder="0"></iframe><br>Powered by <a href="http://vocaroo.com" title="Voice Recorder">Vocaroo Voice Recorder</a>
+
+</div>
