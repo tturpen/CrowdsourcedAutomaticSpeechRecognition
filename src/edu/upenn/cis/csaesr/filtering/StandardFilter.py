@@ -18,7 +18,7 @@ import logging
 class Filter(object):
     """The purpose of this class is to block or approve hypothesis transcriptions
         given any number of factors, WER being one of them.""" 
-    WER_THRESHOLD = .75
+    WER_THRESHOLD = .66
     CER_THRESHOLD = 2
     
     def __init__(self,mongo_handler=None):
@@ -63,7 +63,7 @@ class Filter(object):
         denied = []
         max_rej_wer = (0.0,0.0)
         total_wer = 0.0
-        approved = False
+        approved = True
         for transcription in transcriptions:
             #Normalize the transcription
             #self.mh.normalize_transcription
