@@ -94,11 +94,23 @@ class HitHandler():
         self.html_tags = {"audio_url" : "${audiourl}",
                           "title" : "${title}",
                           "description" : "${description}",
-                          "audioclip_id" : "${audioclipid}"}
-        self.html_head = open(os.path.join(template_dir,"transcriptionhead.html")).read()
-        self.html_tail =  open(os.path.join(template_dir,"transcriptiontail.html")).read()
-        self.html_question = open(os.path.join(template_dir,"transcriptionquestion.html")).read()
+                          "audioclip_id" : "${audioclipid}",
+                          "prompt" : "${prompt}",
+                          "prompt_id": "${promptid}",
+                          "disable_script" : "${disable_script}",
+                          "audio_id" : "${audio_id}"}
+        
+        #Transcription html templates
+        self.transcription_head = open(os.path.join(template_dir,"transcriptionhead.html")).read()
+        self.transcription_tail =  open(os.path.join(template_dir,"transcriptiontail.html")).read()
+        self.transcription_question = open(os.path.join(template_dir,"transcriptionquestion.html")).read()
+        
+        #Elicitation html templates
+        self.transcription_head = open(os.path.join(template_dir,"elicitationhead.html")).read()
+        self.transcription_tail =  open(os.path.join(template_dir,"elicitationtail.html")).read()
         self.templates["transcription"] = open(os.path.join(template_dir,"vanilla_transcription.html")).read()
+        
+        self.disable_input_script = 'document.getElementById("${input_id}").disabled = true;'
                 
     def dispose_HIT(self,hit_id):
         self.conn.dispose_hit(hit_id)       
@@ -112,13 +124,77 @@ class HitHandler():
     def estimate_html_HIT_cost(self,audio_clip_urls,reward_per_clip,
                                max_assignments):
         return reward_per_clip * len(audio_clip_urls) * max_assignments  
+    
+    def make_html_elicitation_HIT(self,prompt_list,hit_title,prompt_title,description,keywords,
+                                  duration=DEFAULT_DURATION,reward_per_clip=DEFAULT_REWARD,max_assignments=DEFAULT_MAX_ASSIGNMENTS):
+        overview = Overview()
+        overview.append_field("Title", "Record yourself speaking the words in the prompt.")
+        descriptions = ["The following prompts are in English.",
+                        "Click the red circle to record yourself.",
+                        "Play the clip back to verify sound quality."
+                        ]
+        keywords = "audio, recording, elicitation, English"
         
+        html_head = self.elicitation_head.replace(self.html_tags["title"],hit_title)
+        for description in descriptions:            
+            html_head = html_head.replace(self.html_tags["description"],
+                                          "<li>"+description+"</li>\n"+self.html_tags["description"])    
+        questions_html = []
+        prompt_ids = []
+        
+        for prompt_words,prompt_id in prompt_list:
+            #For each prompt, generate the question html given the template
+            prompt_id = str(prompt_id) 
+            prompt = " ".join(prompt_words)
+            question = self.elicitation_question.replace(self.html_tags["prompt"],prompt)
+            question = question.replace(self.html_tags["prompt_id"],str(prompt_id))
+            questions_html.append(question)
+            prompt_ids.append(prompt_id)
+            
+        for prompt_id in prompt_ids:
+            #Disable the inputs for the prompts, which are just text fields for the 
+            #audio recording URLs
+            script = self.disable_input_script.replace("${input_id}",prompt_id)
+            html_head = html_head.replace(self.html_tags["disable_script"],script+\
+                                          "\n"+self.html_tags["disable_script"])
+            if(self.html_tags["prompt_id"]) in html_head:
+                html_head = html_head.replace(self.html_tags["prompt_id"],"'"+prompt_id+"'"+\
+                                              ","+self.html_tags["prompt_id"])
+        #Get rid of html tags
+        html_head = html_head.replace(self.html_tags["disable_script"],"")
+        html_head = html_head.replace(","+self.html_tags["prompt_id"],"")
+        html_head = html_head.replace(self.html_tags["description"],"")
+        html = html_head
+
+        for question in questions_html:        
+            html += question
+        
+        html += self.transcription_tail
+        html_question = HTMLQuestion(html,800)
+        
+        #reward calculation
+        reward = reward_per_clip*len(prompt_list)
+#         try:
+#             return self.conn.create_hit(title=hit_title,
+#                                     question=html_question,
+#                                     max_assignments=max_assignments,
+#                                     description=description,
+#                                     keywords=keywords,
+#                                     duration = duration,
+#                                     reward = reward)
+#         except MTurkRequestError as e:
+#             if e.reason != "OK":
+#                 raise 
+#             else:
+#                 print(e) 
+#                 return False
+        return False
+    
     def make_html_transcription_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,
                                duration=DEFAULT_DURATION,reward_per_clip=DEFAULT_REWARD,max_assignments=DEFAULT_MAX_ASSIGNMENTS):        
         overview = Overview()
         overview.append_field("Title", "Type the words in the following audio clip in order.")
         
-        url = "http://www.cis.upenn.edu/~tturpen/basic_transcription_hit.html"
         descriptions = ["The following audio clips are in English.",
                         "Transcribe the audio clip by typing the words that the person \
                         says in order.",
@@ -127,16 +203,9 @@ class HitHandler():
                         "Write letters (see example).",
                         "Punctuation does not matter.",
                         "Hotkeys: press Tab to play the next clip."]
-        
-        disable_script_tag = "${disable_script}"
-        audio_id_tag = "${audio_id}"
-        #audio_listener_tag = "${audio_event_listener_script}"
-                        
-        disable_input_script = 'document.getElementById("${input_id}").disabled = true;'
-        #audio_event_listener_script = "document.getElementById('${input_id}').addEventListener('ended',enableSubmitButton());"
                         
         keywords = "audio, transcription, English"
-        html_head = self.html_head.replace(self.html_tags["title"],hit_title)
+        html_head = self.transcription_head.replace(self.html_tags["title"],hit_title)
         for description in descriptions:            
             html_head = html_head.replace(self.html_tags["description"],
                                           "<li>"+description+"</li>\n"+self.html_tags["description"])
@@ -145,7 +214,7 @@ class HitHandler():
         inputs = []
         for acurl,acid in audio_clip_urls:
             input_id = str(acid) 
-            question = self.html_question.replace(self.html_tags["audio_url"],acurl)
+            question = self.transcription_question.replace(self.html_tags["audio_url"],acurl)
             question = question.replace(self.html_tags["audioclip_id"],str(acid))
             question = question.replace("${count}",input_id)
             count += 1
@@ -153,13 +222,15 @@ class HitHandler():
             inputs.append(input_id)
             
         for input_id in inputs:
-            script = disable_input_script.replace("${input_id}",input_id)
-            html_head = html_head.replace(disable_script_tag,script+"\n"+disable_script_tag)
-            if(audio_id_tag) in html_head:
-                html_head = html_head.replace(audio_id_tag,"'"+input_id+"'"+","+audio_id_tag)
+            script = self.disable_input_script.replace("${input_id}",input_id)
+            html_head = html_head.replace(self.html_tags["disable_script"],script+\
+                                          "\n"+self.html_tags["disable_script"])
+            if(self.html_tags["audio_id"]) in html_head:
+                html_head = html_head.replace(self.html_tags["audio_id"],"'"+\
+                                              input_id+"'"+","+self.html_tags["audio_id"])
             
-        html_head = html_head.replace(disable_script_tag,"")
-        html_head = html_head.replace(","+audio_id_tag,"")
+        html_head = html_head.replace(self.html_tags["disable_script"],"")
+        html_head = html_head.replace(","+self.html_tags["audio_id"],"")
         html_head = html_head.replace(self.html_tags["description"],"")
         html = html_head
 
@@ -167,7 +238,7 @@ class HitHandler():
             html += question
             count += 1
         
-        html += self.html_tail
+        html += self.transcription_tail
         html_question = HTMLQuestion(html,800)
         
         #reward calculation
@@ -197,7 +268,7 @@ class HitHandler():
         question_form = QuestionForm()
         question_form.append(overview)
         for ac in audio_clip_urls:
-            audio_html = self.html_question.replace(self.audio_url_tag,ac)
+            audio_html = self.transcription_question.replace(self.audio_url_tag,ac)
             qc = QuestionContent()
             qc.append_field("Title",question_title)            
             qc.append(FormattedContent(audio_html))
