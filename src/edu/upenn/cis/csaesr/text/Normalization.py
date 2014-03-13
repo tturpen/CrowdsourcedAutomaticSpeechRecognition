@@ -64,7 +64,7 @@ class Normalize(object):
         return word.split("-")
     
     def from_apostrophe(self,word):
-        return [word.replace("+s","'s")]
+        return [word.replace("+","'")]
     
     def compare_sents(self,sent_procs,word_procs,hyp,ref=None):
         for func in sent_procs:
@@ -80,7 +80,7 @@ class Normalize(object):
             print(result==ref)
         return result    
     
-    def standard_normalization(self,sent):
+    def standard_normalization(self,sent):        
         sent_procs = self.sent_procs
         word_procs = self.word_procs
         for func in sent_procs:
@@ -92,6 +92,10 @@ class Normalize(object):
             for word in sent:
                 result.extend(word_procs[func](word))
             sent = result
+            
+        #Remove empty words
+        while "" in sent:
+            sent.remove("")
         return sent    
         
     
