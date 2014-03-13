@@ -48,9 +48,6 @@ class TranscriptionPipelineHandler():
         self.balance = self.conn.get_account_balance()[0].amount
         self.logger = logging.getLogger("transcription_engine.transcription_pipeline_handler")
         
-    def generate_audio_HITs(self):
-        pass   
-    
     def audio_clip_referenced_to_hit(self,priority=1,max_queue_size=10):    
         for audio_clip in self.mh.get_artifacts_by_state("audio_clips","Referenced"):
             audio_clip_id = audio_clip["_id"]
@@ -286,7 +283,6 @@ class TranscriptionPipelineHandler():
                     transcription_pairs = self.mh.get_transcription_pairs(assignment_id)
                     for pair in transcription_pairs:
                         print ("Reference:\n\t%s\nHypothesis:\n\t%s\n"%(pair[0],pair[1]))
-
             
     def stats(self):
         workers = self.mh.get_all_workers()
