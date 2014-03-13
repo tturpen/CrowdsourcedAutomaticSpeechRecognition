@@ -193,48 +193,6 @@ class TranscriptionPipelineHandler():
             if approved:
                 self.mh.add_assignment_to_worker(worker_id,(assignment_id,average_wer))
             
-    def recalculate_worker_assignment_wer(self):
-        """For all submitted assignments,
-            if an answered question has a reference transcription,
-            check the WER.
-            If all the answered questions with reference transcriptions
-            have an acceptable WER, approve the assignment and update
-            the audio clips and transcriptions."""
-        assignments = self.mh.get_artifacts("assignments",{"state":"Approved"})        
-        for assignment in assignments:
-            assignment_id = assignment["_id"]
-            denied = []
-            #If no transcriptions have references then we automatically approve the HIT
-            approved = True
-            transcription_ids = assignment["transcriptions"]
-            transcriptions = self.mh.get_transcriptions("_id",transcription_ids)
-            worker_id = assignment["worker_id"]
-            worker_id = self.mh.create_worker_artifact(worker_id)
-            
-            max_rej_wer = (0.0,0.0)
-            total_wer = 0.0
-            for transcription in transcriptions:
-                #Normalize the transcription
-                #self.mh.normalize_transcription
-                reference_id = self.mh.get_audio_clip_by_id(transcription["audio_clip_id"],"reference_transcription_id")
-                if reference_id:
-                    reference_transcription = self.mh.get_reference_transcription({"_id": reference_id},
-                                                                                  "transcription")
-                    new_transcription = transcription["transcription"].split(" ")
-                    if reference_transcription:
-                        transcription_wer = cer_wer(reference_transcription,new_transcription)
-                        total_wer += transcription_wer
-                        if transcription_wer < WER_THRESHOLD:
-                            self.logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
-                        else:
-                            max_rej_wer = (transcription_wer,WER_THRESHOLD)
-                            denied.append((reference_transcription,new_transcription))
-                            approved = False
-            average_wer = total_wer/len(transcriptions)
-            #Update the worker
-            self.mh.add_assignment_to_worker(worker_id,(assignment_id,average_wer))
-
-            
     def _load_rm_audio_source_file_to_clipped(self,file_dir,prompt_file_uri,
                                                    base_clip_dir,sample_rate=16000,
                                                    http_base_url = "http://www.cis.upenn.edu/~tturpen/wavs/",
@@ -373,3 +331,44 @@ class TranscriptionPipelineHandler():
                         self.conn.disable_hit(hit_id)
                     except MTurkRequestError as e:
                         raise e
+                    
+#     def recalculate_worker_assignment_wer(self):
+#         """For all submitted assignments,
+#             if an answered question has a reference transcription,
+#             check the WER.
+#             If all the answered questions with reference transcriptions
+#             have an acceptable WER, approve the assignment and update
+#             the audio clips and transcriptions."""
+#         assignments = self.mh.get_artifacts("assignments",{"state":"Approved"})        
+#         for assignment in assignments:
+#             assignment_id = assignment["_id"]
+#             denied = []
+#             #If no transcriptions have references then we automatically approve the HIT
+#             approved = True
+#             transcription_ids = assignment["transcriptions"]
+#             transcriptions = self.mh.get_transcriptions("_id",transcription_ids)
+#             worker_id = assignment["worker_id"]
+#             worker_id = self.mh.create_worker_artifact(worker_id)
+#             
+#             max_rej_wer = (0.0,0.0)
+#             total_wer = 0.0
+#             for transcription in transcriptions:
+#                 #Normalize the transcription
+#                 #self.mh.normalize_transcription
+#                 reference_id = self.mh.get_audio_clip_by_id(transcription["audio_clip_id"],"reference_transcription_id")
+#                 if reference_id:
+#                     reference_transcription = self.mh.get_reference_transcription({"_id": reference_id},
+#                                                                                   "transcription")
+#                     new_transcription = transcription["transcription"].split(" ")
+#                     if reference_transcription:
+#                         transcription_wer = cer_wer(reference_transcription,new_transcription)
+#                         total_wer += transcription_wer
+#                         if transcription_wer < WER_THRESHOLD:
+#                             self.logger.info("WER for transcription(%s) %d"%(transcription["transcription"],transcription_wer))
+#                         else:
+#                             max_rej_wer = (transcription_wer,WER_THRESHOLD)
+#                             denied.append((reference_transcription,new_transcription))
+#                             approved = False
+#             average_wer = total_wer/len(transcriptions)
+#             #Update the worker
+#             self.mh.add_assignment_to_worker(worker_id,(assignment_id,average_wer))
