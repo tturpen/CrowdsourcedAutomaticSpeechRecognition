@@ -26,8 +26,8 @@ from text.Normalization import Normalize
 import logging
 import os
 
-HOST='mechanicalturk.amazonaws.com'
-#HOST='mechanicalturk.sandbox.amazonaws.com'
+#HOST='mechanicalturk.amazonaws.com'
+HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
 cost_sensitive = True
 
@@ -42,8 +42,7 @@ class ElicitationPipelineHandler(object):
                           aws_secret_access_key=aws_k,\
                           host=HOST)
         except Exception as e:
-            print(e)
-        
+            print(e)        
         
         self.ah = AssignmentHandler(self.conn)
         self.th = TurkerHandler(self.conn)
@@ -87,20 +86,24 @@ class ElicitationPipelineHandler(object):
                     assignment_ids.append(assignment_id)  
                     if self.mh.get_artifact("elicitation_assignments",{"_id":assignment.AssignmentId}):
                         #We create assignments here, so if we already have it, skip
-                        continue
+                        #continue
+                        pass
                     else:
                         have_all_assignments = False                                         
                     recording_ids = []                
                     prompt_id_tag = "prompt_id"
                     recording_url_tag = "recording_url"
-                    recording_dict = self.ah.get_assignment_submitted_text_dict(assignment,prompt_id_tag,recording_url_tag)   
+                    worker_id_tag = "worker_id"
+                    recording_dict = self.ah.get_assignment_submitted_text_dict(assignment,prompt_id_tag,recording_url_tag)
+                    worker_oid = self.mh.create_worker_artifact(assignment.WorkerId)   
                     for recording in recording_dict:
                         if not self.mh.get_artifact_by_id("prompts",recording[prompt_id_tag]): 
                             self.logger.info("Assignment(%s) with unknown %s(%s) skipped"%\
                                         (assignment_id,prompt_id_tag,recording[prompt_id_tag]))
-                            break 
+                            break                        
                         recording_id = self.mh.create_recording_source_artifact(recording[prompt_id_tag],
-                                                                         recording[recording_url_tag])
+                                                                         recording[recording_url_tag],
+                                                                         recording[worker_id_tag])
                         self.mh.add_item_to_artifact_set("prompts", recording[prompt_id_tag], "recording_sources",
                                                        recording_id)
                         recording_ids.append(recording_id)
@@ -108,7 +111,14 @@ class ElicitationPipelineHandler(object):
                         self.mh.create_assignment_artifact(assignment,
                                                        recording_ids)
                         self.mh.add_item_to_artifact_set("elicitation_hits", hit_id, "submitted_assignments", assignment_id)
+                        self.mh.add_item_to_artifact_set("workers", worker_oid, "submitted_assignments", assignment_id)
                 print("Elicitation HIT(%s) submitted assignments: %s "%(hit_id,assignment_ids))    
+
+    def recording_sources_generate_worker_sorted_html(self):
+        sources = self.mh.get_all_artifacts("recording_sources")
+        for source in sources:
+            if not self.mh.get_artifact("workers", {"eid": source["worker_id"]}, refine):
+                pass
             
     def enqueue_prompts_and_generate_hits(self):
         prompts = self.mh.get_artifacts_by_state("prompts", "New")
@@ -202,7 +212,7 @@ class ElicitationPipelineHandler(object):
                                      1: PromptSource-Load_RawToList: Load Resource Management 1 prompt source files to queueable prompts
                                      2: Prompt-ReferencedToHit: Queue all referenced prompts and create a HIT if the queue is full.
                                      3: Prompt-HitToAssignmentSubmitted: Check all submitted assignments for Elicitations.
-                                     4: PromptAssignment-SubmittedToElicitation: Check all submitted assignments for Elicitations.
+                                     4: RecordingSources-GenerateWorkerSortedHtml: Check all submitted assignments for Elicitations.
                                      5: Elicitation-NewToSecondPassQueue: Check all submitted clips against their reference.
                                      6: Elicitation-NewToApproved: Check all submitted clips against their reference.
                                      7: Review Current Hits
@@ -218,6 +228,8 @@ class ElicitationPipelineHandler(object):
                 self.enqueue_prompts_and_generate_hits()
             elif selection == "3":
                 self.load_assignment_hit_to_submitted()
+            elif selection == "4":
+                self.recording_sources_generate_worker_sorted_html()
             elif selection == "5":
                 self.allhits_liveness()
             else:

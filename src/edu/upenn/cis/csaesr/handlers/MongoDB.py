@@ -15,12 +15,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from pymongo import MongoClient
 from data.structures import Turker, AudioClip, Transcription, AudioSource, HitEntity
-from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries, DuplicateArtifactException
+from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries, DuplicateArtifactException, WrongParametersExecption
 from time import time
 from collections import defaultdict
 from bson.objectid import ObjectId
 from statemaps import Elicitation
-from statemaps.Elicitation import Prompt, PromptSource, ElicitationHit, RecordingSource, ElicitationAssignment
+from statemaps.Elicitation import Prompt, PromptSource, ElicitationHit, RecordingSource, ElicitationAssignment, Worker
 from handlers.Recording import RecordingHandler
 
 import logging
@@ -374,7 +374,7 @@ class MongoElicitationHandler(object):
         self.queue_revive_time = 5 
         client = MongoClient(self.default_db_loc)
         self.db_name = "elicitation"
-        self.db = client.production_elicitation_db
+        self.db = client.elicitation_db
         self.c = {}#dictionary of collections
         
         #Initialize the state maps
@@ -397,7 +397,8 @@ class MongoElicitationHandler(object):
                       "prompts": ["Prompt",Prompt().map],
                       "elicitation_hits": ["ElicitationHit",ElicitationHit().map],
                       "recording_sources" : ["RecordingSource", RecordingSource().map],
-                      "elicitation_assignments" : ["ElicitationAssignment",ElicitationAssignment().map]
+                      "elicitation_assignments" : ["ElicitationAssignment",ElicitationAssignment().map],
+                      "workers" : ["Worker", Worker().map]
                       }
         self.c["state_maps"].remove({})
         self.c["state_maps"].insert(prompt_map)        
@@ -478,7 +479,7 @@ class MongoElicitationHandler(object):
         """Given a list of artifact ids, update each one's field to value"""
         self.c[collection].update({"_id":artifact_id}, document)
                     
-    def update_artifact_by_id(self,collection,artifact_id,field,value,document=None):
+    def update_artifact_by_id(self,collection,artifact_id,field=None,value=None,document=None):
         if document:
             #Careful, this replaces the document entirely
             if ObjectId.is_valid(artifact_id):
@@ -488,7 +489,7 @@ class MongoElicitationHandler(object):
             if field != "state":
                 #Because updating the state calls this method
                 self.update_artifact_state(collection, artifact_id)
-        else:
+        elif field and value:
             if ObjectId.is_valid(artifact_id):
                 self.c[collection].update({"_id":ObjectId(artifact_id)}, {"$set" : {field:value}})
             else:
@@ -496,6 +497,8 @@ class MongoElicitationHandler(object):
             if field != "state":
                 #Because updating the state calls this method
                 self.update_artifact_state(collection, artifact_id)          
+        else:
+            raise WrongParametersExecption
                 
     def update_artifacts_by_id(self,collection,artifact_ids,field,value,document=None):
         """Given a list of artifact ids, update each one's field to value"""
@@ -558,7 +561,7 @@ class MongoElicitationHandler(object):
             art_id = self.get_artifact(collection, document,"_id")
             self.logger.info("Created %s artifact(%s) "%(collection,art_id))
         elif update:
-            self.update_artifact_with_document(collection,art_id,document)
+            self.update_artifact_by_id(collection,art_id,document=document)
         self.update_artifact_state(collection, art_id)
         return art_id       
         
@@ -602,12 +605,8 @@ class MongoElicitationHandler(object):
         return art_id
         
     def create_worker_artifact(self,worker_id):
-        document = {"_id": worker_id,
-                    "approved_elicitation_ids":[],
-                    "denied_elicitation_ids":[],
-                    "submitted_assignments":[],
-                    "prequalification_assignment_id":None}
-        art_id = self.create_artifact("workers",{"_id": worker_id},document)
+        document = {"eid": worker_id}
+        art_id = self.create_artifact("workers",{"eid": worker_id},document)
         return art_id
     
     def create_prompt_artifact(self,source_id, words, normalized_words,line_number,rm_prompt_id,word_count):
@@ -625,14 +624,15 @@ class MongoElicitationHandler(object):
         art_id = self.create_artifact("prompts", search, document)
         return art_id
     
-    def create_recording_source_artifact(self,prompt_id,recording_url):
+    def create_recording_source_artifact(self,prompt_id,recording_url,worker_id):
         """Use the recording handler to download the recording
             and create the artifact"""
         recording_uri = self.rh.download_vocaroo_recording(recording_url)
         search = {"recording_url" : recording_url}
         document = {"recording_url": recording_url,
                     "prompt_id": prompt_id,
-                    "recording_uri": recording_uri}
+                    "recording_uri": recording_uri,
+                    "worker_id": worker_id}
         art_id = self.create_artifact("recording_sources", search, document)
         return art_id
         

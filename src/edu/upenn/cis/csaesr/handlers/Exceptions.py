@@ -47,8 +47,10 @@ class DuplicateArtifactException(Exception):
     def __init__(self,message):
         raise self
 
-
-
+class WrongParametersExecption(Exception):
+    """Raise if wrong parameters are passed to a method"""
+    def __init__(self,message):
+        raise self
 
 
     

@@ -75,6 +75,23 @@ class ElicitationAssignment(Comparisons):
     def Submitted(self,artifact):
         return self.greater_than_zero("recordings",artifact)
     
+class Worker(Comparisons):
+    def __init__(self):
+        self.map = ["Submitted","Approved","Denied","Blocked"]
+        
+    def Submitted(self,artifact):
+        return self.greater_than_zero("submitted_assignments",artifact)
+        
+    def Approved(self,artifact):
+        return self.greater_than_zero("approved_assignments",artifact)
+    
+    def Denied(self,artifact):
+        return self.greater_than_zero("denied_assignments",artifact)
+    
+    def Blocked(self,artifact):
+        return self.greater_than_zero("blocked_assignments",artifact)
+
+    
     
     
         

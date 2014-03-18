@@ -80,6 +80,14 @@ class Normalize(object):
             print(result==ref)
         return result    
     
+    def rm_prompt_normalization(self,word_list):
+        """The Resource Management Corpus does some weird things with words,
+            normalize them."""
+        result = []
+        for word in word_list:
+            result.extend(self.from_apostrophe(word))
+        return result
+            
     def standard_normalization(self,sent):        
         sent_procs = self.sent_procs
         word_procs = self.word_procs
