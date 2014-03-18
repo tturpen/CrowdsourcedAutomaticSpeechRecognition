@@ -1,0 +1,7 @@
+<Application>
+  <Flash>
+    <FlashMovieURL>${flash_url}</FlashMovieURL>
+    <Width>525</Width>
+    <Height>450</Height>
+  </Flash>
+</Application>
