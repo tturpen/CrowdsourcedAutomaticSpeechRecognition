@@ -1,0 +1,97 @@
+<html><head>
+<title>${title}</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<script type='text/javascript' src='https://s3.amazonaws.com/mturk-public/externalHIT_v1.js'>
+</script>
+<script type='text/javascript'>
+  function disableInput(){
+  hit_id=getParameterByName("assignmentId");
+  if (hit_id == "ASSIGNMENT_ID_NOT_AVAILABLE"){
+		${disable_script}
+  }
+  };
+  function getParameterByName(name) {
+    name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+    var regex = new RegExp("[\\?&]" + name + "=([^&#]*)"),
+        results = regex.exec(location.search);
+    return results == null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
+  }
+  function validateForm(){
+	  if (window.validate)
+		  return true;
+	  else
+              {
+                   alert("Please make sure to enter a recording URL for every prompt.");
+                   return false;
+              }
+  }
+  
+  function disableSubmitButton(){
+	  window.validate = false;
+	  document.getElementById("submitButton").setAttribute('onclick','return validateForm();');
+	  for(var i=0; i < window.promptIds.length; i++){
+		//a as a variable to create local copy of index
+		  var a = (function(i){
+			   return function(){
+			   enableSubmitButton(window.promptIds[i]);
+			   };
+		});
+		document.getElementById(window.promptIds[i]).addEventListener("keyup",a(i));
+	  }
+  }
+  function enableSubmitButton(promptId){
+	  window.recordedIds[window.idsCount] = promptId;
+	  window.idsCount += 1;
+	  window.validate = compareArrays(window.promptIds,window.recordedIds);
+  }
+
+  function compareArrays(ref,hyp){
+	  var reflen = ref.length;
+	  var hyplen = hyp.length;
+	  var same = false;
+	
+	  for(var i = 0; i < reflen; i++){
+	     same = false;
+	
+	     for(var j = 0; j < hyplen; j++){
+		if (ref[i].localeCompare(hyp[j]) === 0) {
+				same = true;
+				}
+	     }
+	
+	     if(!same){
+		return false;
+		}
+	  }
+	  return true;
+	}
+
+
+  function loadFuncs(){
+	  disableInput();
+	  window.promptIds = [${prompt_id}];
+	  disableSubmitButton();
+	  window.recordedIds = new Array();
+	  window.idsCount = 0;
+  }
+  window.onload = loadFuncs;  
+</script>
+<style type="text/css">
+  .row {  height:auto !important; }
+  .list {display: none; }
+  .show {display: none; }
+  .hide:target + .show {display: inline; }
+  .hide:target {display: inline; }
+  .hide:target ~ .list {display:inline; }
+  @media print { .hide, .show {display: none; }}
+</style>
+</head><body><form name="mturk_form" method="post" id="mturk_form" action="https://www.mturk.com/mturk/externalSubmit"><input type="hidden" value="" name="assignmentId" id="assignmentId" />
+<div id="title">
+  <h3>Record Yourself Speaking the Prompt</h3>
+
+<div class="highlight-box">
+  <ul>
+	${description}
+  </ul>
+</div>
+</div>
