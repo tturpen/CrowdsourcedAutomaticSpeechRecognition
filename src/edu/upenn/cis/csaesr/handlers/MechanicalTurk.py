@@ -12,8 +12,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from boto.mturk.connection import MTurkConnection, MTurkRequestError
-from boto.mturk.question import ExternalQuestion, QuestionForm, Overview, HTMLQuestion, QuestionContent, FormattedContent, FreeTextAnswer, AnswerSpecification, Question
+from boto.mturk.question import ExternalQuestion, QuestionForm, Overview, HTMLQuestion, QuestionContent, FormattedContent, FreeTextAnswer, AnswerSpecification, Question, Flash, SelectionAnswer
 from handlers.Exceptions import IncorrectTextFieldCount
+from text.CustomXml import FlashXml
 import os
 import logging
 
@@ -72,6 +73,22 @@ class AssignmentHandler():
         self.logger.info("Retrieved transcriptions for assignment(%s)"%(assignment))
         return response
     
+    def get_assignment_submitted_text_dict(self,assignment,id_tag,text_tag):
+        """Given the assignment return all the text_tags."""
+        response = []
+        for result_set in assignment.answers:
+            for question_form_answer in result_set:
+                if len(question_form_answer.fields) != 1:
+                    raise IncorrectTextFieldCount
+                response.append({id_tag: question_form_answer.qid,
+                                 "assignment_id" : assignment.AssignmentId,
+                                 text_tag : question_form_answer.fields[0],                                    
+                                 "worker_id" : assignment.WorkerId,
+                                 })
+        self.logger.info("Retrieved %s for assignment(%s)"%(text_tag,assignment))
+        return response
+    
+    
 class TurkerHandler():
     def __init__(self,connection):
         self.conn = connection
@@ -84,10 +101,11 @@ class TurkerHandler():
     
 
 class HitHandler():
-    DEFAULT_DURATION = 60*5
+    DEFAULT_DURATION = 60*10
     DEFAULT_REWARD = 0.02
     DEFAULT_MAX_ASSIGNMENTS = 3
     def __init__(self,connection,template_dir):
+        self.vocaroo_url = "https://vocaroo.com/?minimal"
         self.conn = connection
         base_dir = os.getcwd()
         self.templates = {}
@@ -96,9 +114,11 @@ class HitHandler():
                           "description" : "${description}",
                           "audioclip_id" : "${audioclipid}",
                           "prompt" : "${prompt}",
-                          "prompt_id": "${promptid}",
+                          "underscored_prompt": "${underscored_prompt}",
+                          "prompt_id": "${prompt_id}",
                           "disable_script" : "${disable_script}",
-                          "audio_id" : "${audio_id}"}
+                          "audio_id" : "${audio_id}",
+                          "flash_url": "${flash_url}"}
         
         #Transcription html templates
         self.transcription_head = open(os.path.join(template_dir,"transcriptionhead.html")).read()
@@ -106,9 +126,13 @@ class HitHandler():
         self.transcription_question = open(os.path.join(template_dir,"transcriptionquestion.html")).read()
         
         #Elicitation html templates
-        self.transcription_head = open(os.path.join(template_dir,"elicitationhead.html")).read()
-        self.transcription_tail =  open(os.path.join(template_dir,"elicitationtail.html")).read()
+        self.elicitation_head = open(os.path.join(template_dir,"nonflash_elicitationhead.html")).read()
+        self.elicitation_tail =  open(os.path.join(template_dir,"elicitationtail.html")).read()
+        self.elicitation_question = open(os.path.join(template_dir,"elicitationquestion.html")).read()
+        self.flash_xml = open(os.path.join(template_dir,"flashApplication.xml")).read()
         self.templates["transcription"] = open(os.path.join(template_dir,"vanilla_transcription.html")).read()
+        
+        self.mic_selections = ["Laptop","Headset","Cellphone","Other"]
         
         self.disable_input_script = 'document.getElementById("${input_id}").disabled = true;'
                 
@@ -123,15 +147,78 @@ class HitHandler():
     
     def estimate_html_HIT_cost(self,audio_clip_urls,reward_per_clip,
                                max_assignments):
-        return reward_per_clip * len(audio_clip_urls) * max_assignments  
+        return reward_per_clip * len(audio_clip_urls) * max_assignments
     
-    def make_html_elicitation_HIT(self,prompt_list,hit_title,prompt_title,description,keywords,
+    def make_question_form_elicitation_HIT(self,prompt_list,hit_title,prompt_title,keywords,
+                                  duration=DEFAULT_DURATION,reward_per_clip=DEFAULT_REWARD,max_assignments=DEFAULT_MAX_ASSIGNMENTS):
+        overview = Overview()        
+        overview.append_field("Title",hit_title)
+        #overview.append(FormattedContent('<a target = "_blank" href="url">hyperlink</a>'))
+        question_form = QuestionForm()
+        
+        descriptions = ["The following prompts are in English.",
+                        "Approve the flash permissions to record audio.",                        
+                        "Click the red circle to record yourself.",
+                        "Read the words after 'prompt:'",
+                        "Click 'Click to Stop'",
+                        "Play the clip back to verify sound quality.",
+                        "After you are happy with your recording, click 'Click here to save >>'",
+                        "Copy & paste the URL under 'Sharing options' into the text field for the prompt.",
+                        "You will NEVER be asked to divulge any personal or identifying information."
+                        ]
+        keywords = "audio, recording, elicitation, English"
+        
+#         for i, description in enumerate(descriptions):            
+#             overview.append_field("%dDescription"%i, description)
+        flash_xml = FlashXml(self.flash_xml.replace(self.html_tags["flash_url"],self.vocaroo_url))
+        overview.append(flash_xml)
+        question_form.append(overview)
+        
+        qc = QuestionContent()
+#        qc.append(FormattedContent(flash_xml))
+           
+        qc.append_field("Title","Please select the type of microphone you are using.")
+#         qc.append(Flash(self.vocaroo_url,525,450))
+#         
+        #answer = FreeTextAnswer()
+        answer = SelectionAnswer(max=1,style="radiobutton",selections=self.mic_selections)
+        q = Question(identifier="MIC",
+                     content=qc,
+                     answer_spec=AnswerSpecification(answer))
+        question_form.append(q)
+#         
+#         for prompt_words,prompt_id in prompt_list:
+#             qc = QuestionContent()
+#             qc.append_field("Title",prompt_words)            
+#             fta = FreeTextAnswer()
+#             q = Question(identifier=prompt_id,
+#                          content=qc,
+#                          answer_spec=AnswerSpecification(fta))
+#             question_form.append(q)
+        reward = reward_per_clip * len(prompt_list)
+        xml = question_form.get_as_xml()
+        try:
+            response = self.conn.create_hit(questions=question_form,
+                             max_assignments=1,
+                             title=hit_title,
+                             description=descriptions[0],
+                             keywords=keywords,
+                             duration=duration,
+                             reward=reward)
+        except MTurkRequestError as e:
+            if e.reason != "OK":
+                raise 
+        return True
+    
+    def make_html_elicitation_HIT(self,prompt_list,hit_title,prompt_title,keywords,
                                   duration=DEFAULT_DURATION,reward_per_clip=DEFAULT_REWARD,max_assignments=DEFAULT_MAX_ASSIGNMENTS):
         overview = Overview()
         overview.append_field("Title", "Record yourself speaking the words in the prompt.")
         descriptions = ["The following prompts are in English.",
-                        "Click the red circle to record yourself.",
-                        "Play the clip back to verify sound quality."
+                        "Click the prompt to record your voice (Redirects to recording Page).",
+                        "Follow the directions on that page.",
+                        "Copy and paste the URL in box below the prompt on this page.",
+                        "You will NEVER be asked to divulge any personal or identifying information."
                         ]
         keywords = "audio, recording, elicitation, English"
         
@@ -146,7 +233,9 @@ class HitHandler():
             #For each prompt, generate the question html given the template
             prompt_id = str(prompt_id) 
             prompt = " ".join(prompt_words)
+            underscored_prompt = "_".join(prompt_words)
             question = self.elicitation_question.replace(self.html_tags["prompt"],prompt)
+            question = question.replace(self.html_tags["underscored_prompt"],underscored_prompt)
             question = question.replace(self.html_tags["prompt_id"],str(prompt_id))
             questions_html.append(question)
             prompt_ids.append(prompt_id)
@@ -171,23 +260,24 @@ class HitHandler():
         
         html += self.transcription_tail
         html_question = HTMLQuestion(html,800)
+        open("/home/taylor/csaesr/tmp/hithtml.html","w").write(html)
         
         #reward calculation
         reward = reward_per_clip*len(prompt_list)
-#         try:
-#             return self.conn.create_hit(title=hit_title,
-#                                     question=html_question,
-#                                     max_assignments=max_assignments,
-#                                     description=description,
-#                                     keywords=keywords,
-#                                     duration = duration,
-#                                     reward = reward)
-#         except MTurkRequestError as e:
-#             if e.reason != "OK":
-#                 raise 
-#             else:
-#                 print(e) 
-#                 return False
+        try:
+            return self.conn.create_hit(title=hit_title,
+                                    question=html_question,
+                                    max_assignments=max_assignments,
+                                    description=description,
+                                    keywords=keywords,
+                                    duration = duration,
+                                    reward = reward)
+        except MTurkRequestError as e:
+            if e.reason != "OK":
+                raise 
+            else:
+                print(e) 
+                return False
         return False
     
     def make_html_transcription_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,
@@ -258,7 +348,6 @@ class HitHandler():
                 print(e) 
                 return False
         return False
-        
         
     def make_question_form_HIT(self,audio_clip_urls,hit_title,question_title,description,keywords,
                                duration=DEFAULT_DURATION,reward=DEFAULT_REWARD):

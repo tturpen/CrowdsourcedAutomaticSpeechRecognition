@@ -61,8 +61,8 @@ logger.addHandler(ch)
 
 
 def main():
-    #elicitation_engine()
-    transcription_engine()
+    elicitation_engine()
+    #transcription_engine()
     
 def elicitation_engine():
     eph = ElicitationPipelineHandler()

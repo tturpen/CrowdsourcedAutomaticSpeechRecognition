@@ -24,27 +24,57 @@ class Comparisons(object):
     
     def alpha_numeric(self,parameter,artifact):
         return parameter in artifact and artifact[parameter].isalnum()
-    
+  
+#For all classes, order of the state map matters. For the first function that fails
+#The previous function's value with be taken  
 class PromptSource(Comparisons):
     def __init__(self):
-        self.map = ["new","listed"]
+        self.map = ["Listed"]
         
-    def listed(self,artifact):
+    def Listed(self,artifact):
         return self.greater_than_zero("prompt_list", artifact)
     
-    def new(self,artifact):
-        return self.equal_to_zero("prompt_list", artifact)
+    
+class RecordingSource(Comparisons):
+    def __init__(self):
+        self.map = ["Clipped"]
+        
+    def Clipped(self,artifact):
+        return self.greater_than_zero("clips", artifact)
+
             
 class Prompt(Comparisons):
     def __init__(self):
-        self.map = ["new","hit"]
+        self.map = ["Queued","Hit","Recorded"]
         
-    def hit(self,artifact):
+    def Queued(self,artifact):
+        return self.greater_than_zero("inqueue", artifact)
+        
+    def Hit(self,artifact):
         return self.alpha_numeric("hit_id", artifact) and\
              self.greater_than_zero("hit_id", artifact)
+             
+    def Recorded(self,artifact):
+        return self.greater_than_zero("recording_sources", artifact)
+             
+class ElicitationHit(Comparisons):
+    def __init__(self):
+        self.map = ["Submitted"]
+        
+    def Submitted(self,artifact):
+        return self.greater_than_zero("submitted_assignments", artifact)
     
-    def new(self,artifact):
-        return self.alpha_numeric("hit_id", artifact) and\
-             self.equal_to_zero("hit_id", artifact)
+    
+class ElicitationAssignment(Comparisons):
+    def __init__(self):
+        self.map = ["Submitted","Approved"]
+        
+    def Approved(self,artifact):
+        return self.greater_than_zero("approval",artifact)
+    
+    def Submitted(self,artifact):
+        return self.greater_than_zero("recordings",artifact)
+    
+    
     
         

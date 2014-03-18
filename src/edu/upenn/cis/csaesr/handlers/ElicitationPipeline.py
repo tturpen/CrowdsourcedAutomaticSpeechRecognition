@@ -21,12 +21,15 @@ from filtering.StandardFilter import Filter
 from util.calc import cer_wer
 from shutil import copyfile
 
+from text.Normalization import Normalize
+
 import logging
 import os
 
-#HOST='mechanicalturk.amazonaws.com'
-HOST='mechanicalturk.sandbox.amazonaws.com'
+HOST='mechanicalturk.amazonaws.com'
+#HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
+cost_sensitive = True
 
 class ElicitationPipelineHandler(object):
 
@@ -34,9 +37,13 @@ class ElicitationPipelineHandler(object):
         aws_id = os.environ['AWS_ACCESS_KEY_ID']
         aws_k = os.environ['AWS_ACCESS_KEY']
 
-        self.conn = MTurkConnection(aws_access_key_id=aws_id,\
+        try:
+            self.conn = MTurkConnection(aws_access_key_id=aws_id,\
                           aws_secret_access_key=aws_k,\
                           host=HOST)
+        except Exception as e:
+            print(e)
+        
         
         self.ah = AssignmentHandler(self.conn)
         self.th = TurkerHandler(self.conn)
@@ -45,22 +52,154 @@ class ElicitationPipelineHandler(object):
         self.ph = PromptHandler()
         self.filter = Filter(self.mh)
         self.balance = self.conn.get_account_balance()[0].amount
+        self.batch_cost = 20
+        if self.balance > self.batch_cost:
+            self.balance = self.batch_cost
+        else:
+            raise IOError
         self.logger = logging.getLogger("transcription_engine.elicitation_pipeline_handler")
         
     def load_PromptSource_RawToList(self,prompt_file_uri):
         """Create the prompt artifacts from the source."""        
-        prompt_dict = self.ph.get_prompts(prompt_file_uri)
+        prompt_dict = self.ph.get_prompts(prompt_file_uri)        
+        disk_space = os.stat(prompt_file_uri).st_size
+        source_id = self.mh.create_prompt_source_artifact(prompt_file_uri, disk_space, len(prompt_dict))
+        normalizer = Normalize()
+        for key in prompt_dict:
+            prompt, line_number = prompt_dict[key]
+            normalized_prompt =  normalizer.rm_prompt_normalization(prompt)
+            self.mh.create_prompt_artifact(source_id, prompt, normalized_prompt, line_number, key, len(prompt))       
+            
+    def load_assignment_hit_to_submitted(self):
+        """Check all assignments for audio clip IDs.
+            Update the audio clips.
+            This is a non-destructive load of the assignments from MTurk"""
+        hits = self.conn.get_all_hits()
+        for hit in hits:
+            transcription_dicts = [{}]
+            hit_id = hit.HITId
+            if self.mh.get_artifact("elicitation_hits",{"_id": hit_id}):
+                assignments = self.conn.get_assignments(hit_id)
+                have_all_assignments = True
+                assignment_ids = []
+                for assignment in assignments:
+                    assignment_id = assignment.AssignmentId
+                    assignment_ids.append(assignment_id)  
+                    if self.mh.get_artifact("elicitation_assignments",{"_id":assignment.AssignmentId}):
+                        #We create assignments here, so if we already have it, skip
+                        continue
+                    else:
+                        have_all_assignments = False                                         
+                    recording_ids = []                
+                    prompt_id_tag = "prompt_id"
+                    recording_url_tag = "recording_url"
+                    recording_dict = self.ah.get_assignment_submitted_text_dict(assignment,prompt_id_tag,recording_url_tag)   
+                    for recording in recording_dict:
+                        if not self.mh.get_artifact_by_id("prompts",recording[prompt_id_tag]): 
+                            self.logger.info("Assignment(%s) with unknown %s(%s) skipped"%\
+                                        (assignment_id,prompt_id_tag,recording[prompt_id_tag]))
+                            break 
+                        recording_id = self.mh.create_recording_source_artifact(recording[prompt_id_tag],
+                                                                         recording[recording_url_tag])
+                        self.mh.add_item_to_artifact_set("prompts", recording[prompt_id_tag], "recording_sources",
+                                                       recording_id)
+                        recording_ids.append(recording_id)
+                    else:
+                        self.mh.create_assignment_artifact(assignment,
+                                                       recording_ids)
+                        self.mh.add_item_to_artifact_set("elicitation_hits", hit_id, "submitted_assignments", assignment_id)
+                print("Elicitation HIT(%s) submitted assignments: %s "%(hit_id,assignment_ids))    
+            
+    def enqueue_prompts_and_generate_hits(self):
+        prompts = self.mh.get_artifacts_by_state("prompts", "New")
+        for prompt in prompts:
+            self.mh.enqueue_prompt(prompt["_id"], 1, 5)
+            prompt_queue = self.mh.get_prompt_queue()
+            prompt_pairs = self.mh.get_prompt_pairs(prompt_queue)
+            if prompt_pairs:
+                hit_title = "Audio Elicitation"
+                question_title = "Speak and Record your Voice" 
+                keywords = "audio, elicitation, speech, recording"
+                if cost_sensitive:
+                    reward_per_clip = 0.05
+                    max_assignments = 2
+                    estimated_cost = self.hh.estimate_html_HIT_cost(prompt_pairs,reward_per_clip=reward_per_clip,\
+                                                                    max_assignments=max_assignments)
+                    prompts_in_hits = self.mh.prompts_already_in_hit(prompt_pairs)
+                    if prompts_in_hits:
+                        #If one or more clips are already in a HIT, remove it from the queue
+                        self.mh.remove_artifact_from_queue(prompts_in_hits)
+                    elif self.balance - estimated_cost >= 0:
+                        #if we have enough money, create the HIT
+                        response = self.hh.make_html_elicitation_HIT(prompt_pairs,hit_title,
+                                                     question_title, keywords,max_assignments=max_assignments,reward_per_clip=reward_per_clip)
+#                         response = self.hh.make_question_form_elicitation_HIT(prompt_pairs,hit_title,
+#                                                      question_title, keywords)
+                        self.balance = self.balance - estimated_cost
+                        if type(response) == ResultSet and len(response) == 1 and response[0].IsValid:
+                            response = response[0]
+                            self.mh.remove_artifacts_from_queue("prompt_queue",prompt_queue)
+                            prompt_ids = [w["prompt_id"] for w in prompt_queue]    
+                            hit_id = response.HITId
+                            hit_type_id = response.HITTypeId
+                            self.mh.create_elicitation_hit_artifact(hit_id,hit_type_id,prompt_ids)  
+                            self.mh.update_artifacts_by_id("prompts", prompt_ids, "hit_id", hit_id)      
+                            self.logger.info("Successfully created HIT: %s"%hit_id)
+                    else:
+                        return True
+                    
+    def allhits_liveness(self):
+        #allassignments = self.conn.get_assignments(hit_id)
+        #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
+
+        hits = self.conn.get_all_hits()
+        selection = raw_input("Remove all hits with no assignments?")
+        if selection == "y":
+            for hit in hits:
+                hit_id = hit.HITId
+                assignments = self.conn.get_assignments(hit_id)
+                if len(assignments) == 0:
+                    try:
+                        self.conn.disable_hit(hit_id)
+                        prompts = self.mh.get_artifact("elicitation_hits",{"_id": hit_id},"prompts")
+                        self.mh.remove_elicitation_hit(hit_id)
+                        if prompts:
+                            self.mh.update_artifacts_state("prompts", prompts)
+                        else:
+                            pass
+                    except MTurkRequestError as e:
+                        raise e
+            return True
+        for hit in hits:
+            hit_id = hit.HITId            
+            print("HIT ID: %s"%hit_id)
+            assignments = self.conn.get_assignments(hit_id)
+            if len(assignments) == 0:
+                if raw_input("Remove hit with no submitted assignments?(y/n)") == "y":
+                    try:
+                        self.conn.disable_hit(hit_id)
+                        prompts = self.mh.get_artifact("elicitation_hits",{"_id": hit_id},"prompts")
+                        self.mh.remove_elicitation_hit(hit_id)
+                        if prompts:
+                            self.mh.update_artifacts_state("prompts", prompts)
+                        else:
+                            pass
+                    except MTurkRequestError as e:
+                        raise e
+            else:
+                if raw_input("Remove hit with %s submitted assignments?(y/n)"%len(assignments)) == "y":
+                    try:
+                        self.conn.disable_hit(hit_id)
+                    except MTurkRequestError as e:
+                        raise e
         
     def run(self):
-        audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/ind_trn"
         #audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/dep_trn"
         prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
-        base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
         selection = 0
-        init_clip_count = 10000
         while selection != "12":
             selection = raw_input("""Prompt Source raw to Elicitations-Approved Pipeline:\n
-                                     1: PromptSource-Load_RawToList: Load Resource Management 1 prompt source files to %d queueable(List) prompts
+                                     1: PromptSource-Load_RawToList: Load Resource Management 1 prompt source files to queueable prompts
                                      2: Prompt-ReferencedToHit: Queue all referenced prompts and create a HIT if the queue is full.
                                      3: Prompt-HitToAssignmentSubmitted: Check all submitted assignments for Elicitations.
                                      4: PromptAssignment-SubmittedToElicitation: Check all submitted assignments for Elicitations.
@@ -72,9 +211,15 @@ class ElicitationPipelineHandler(object):
                                      10: Worker stats
                                      11: Recalculate worker WER
                                      12: Exit
-                                    """%init_clip_count)
+                                    """)
             if selection == "1":
                 self.load_PromptSource_RawToList(prompt_file_uri)
+            elif selection == "2":
+                self.enqueue_prompts_and_generate_hits()
+            elif selection == "3":
+                self.load_assignment_hit_to_submitted()
+            elif selection == "5":
+                self.allhits_liveness()
             else:
                 selection = "12"
                 

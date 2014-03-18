@@ -19,7 +19,9 @@ from handlers.Exceptions import MultipleResultsOnIdFind, TooManyEntries, Duplica
 from time import time
 from collections import defaultdict
 from bson.objectid import ObjectId
-from statemaps.Elicitation import Prompt, PromptSource
+from statemaps import Elicitation
+from statemaps.Elicitation import Prompt, PromptSource, ElicitationHit, RecordingSource, ElicitationAssignment
+from handlers.Recording import RecordingHandler
 
 import logging
 MAX_QUEUE_VIEW = 100
@@ -369,32 +371,41 @@ class MongoElicitationHandler(object):
     default_db_loc = 'mongodb://localhost:27017'
 
     def __init__(self):
+        self.queue_revive_time = 5 
         client = MongoClient(self.default_db_loc)
         self.db_name = "elicitation"
-        self.db = client.elicitation_db
+        self.db = client.production_elicitation_db
         self.c = {}#dictionary of collections
         
         #Initialize the state maps
         self.c["state_maps"] = self.db.state_maps
         self.initialize_state_map()        
-        
+
+        self.rh = RecordingHandler()
+        self.c["recording_sources"] = self.db.recording_sources
         self.c["prompt_sources"] = self.db.prompt_sources
         self.c["prompts"] = self.db.prompts
         self.c["hits"] = self.db.prompt_hits
         self.c["prompt_queue"] = self.db.prompt_queue
-        self.c["assignments"] = self.db.assignments
+        self.c["elicitation_assignments"] = self.db.elicitation_assignments
+        self.c["elicitation_hits"] = self.db.elicitation_hits
         self.c["workers"] = self.db.workers 
         self.logger = logging.getLogger("transcription_engine.mongodb_elicitation_handler")
         
     def initialize_state_map(self):
-        prompt_map = {"prompt_source": PromptSource().map,
-                      "prompt": Prompt().map
+        prompt_map = {"prompt_sources": ["PromptSource",PromptSource().map],
+                      "prompts": ["Prompt",Prompt().map],
+                      "elicitation_hits": ["ElicitationHit",ElicitationHit().map],
+                      "recording_sources" : ["RecordingSource", RecordingSource().map],
+                      "elicitation_assignments" : ["ElicitationAssignment",ElicitationAssignment().map]
                       }
         self.c["state_maps"].remove({})
         self.c["state_maps"].insert(prompt_map)        
         
     def get_artifact_by_id(self,collection,art_id,field=None,refine={}):
-        return self.get_artifact(collection,{"_id":ObjectId(art_id)},field,refine)
+        if ObjectId.is_valid(art_id):
+            return self.get_artifact(collection,{"_id":ObjectId(art_id)},field,refine)
+        return self.get_artifact(collection,{"_id":art_id},field,refine)
     
     def get_artifacts_by_state(self,collection,state,field=None,refine={}):
         return self.c[collection].find({"state":state})
@@ -413,9 +424,9 @@ class MongoElicitationHandler(object):
         prev = False
         for response in responses:
             if prev:
-                raise TooManyEntries("MongoHandler.get_artifact."+collection)
+                raise TooManyEntries("MongoElicitationHandler.get_artifact."+collection)
             prev = response        
-        return prev[field] if field and prev else prev
+        return field in prev and prev[field] if field and prev else prev
     
     def get_max_queue(self,max_sizes):
         max_q = []
@@ -431,7 +442,7 @@ class MongoElicitationHandler(object):
     def prompts_already_in_hit(self,prompt_pairs):
         prompts_in_hits = []
         for pair in prompt_pairs:
-            for hit in self.get_all_artifacts("transcription_hits"):
+            for hit in self.get_all_artifacts("elicitation_hits"):
                 if pair in hit["prompts"]:
                     prompts_in_hits.append(pair[1])#Append the clip id
                     self.logger.info("Audio clip(%s) already in HIT(%s)"(pair[1],hit["_id"]))
@@ -445,6 +456,13 @@ class MongoElicitationHandler(object):
             if  time() - artifact["processing"] > self.queue_revive_time:
                 self.c[queue_name].update({"_id":artifact["_id"]}, {"$set" : {"processing" : None}})  
         self.logger.info("Finished reviving database(%s) queue."%self.db_name)
+        
+    def init_artifact_set(self,collection,artifact_id,field,values):
+        if not self.get_artifact_by_id(collection, artifact_id, field):
+            if ObjectId.is_valid(artifact_id):
+                self.c[collection].update({"_id":ObjectId(artifact_id)},{"$set":{field:values}})
+            else:
+                self.c[collection].update({"_id":artifact_id},{"$set":{field:values}})
     
     def remove_artifacts(self,collection,artifacts):
         """Given a list of artifacts, remove each one by _id"""
@@ -455,31 +473,73 @@ class MongoElicitationHandler(object):
         """Given a list of artifacts, remove each one by _id"""
         for artifact_id in artifact_ids:
             self.c[collection].remove({"_id":artifact_id})
-            
-    def update_artifacts_by_id(self,collection,artifact_ids,field,value):
+         
+    def update_artifact_with_document(self,collection,artifact_id,document):   
+        """Given a list of artifact ids, update each one's field to value"""
+        self.c[collection].update({"_id":artifact_id}, document)
+                    
+    def update_artifact_by_id(self,collection,artifact_id,field,value,document=None):
+        if document:
+            #Careful, this replaces the document entirely
+            if ObjectId.is_valid(artifact_id):
+                self.c[collection].update({"_id":ObjectId(artifact_id)}, document)
+            else:
+                self.c[collection].update({"_id":artifact_id}, document)
+            if field != "state":
+                #Because updating the state calls this method
+                self.update_artifact_state(collection, artifact_id)
+        else:
+            if ObjectId.is_valid(artifact_id):
+                self.c[collection].update({"_id":ObjectId(artifact_id)}, {"$set" : {field:value}})
+            else:
+                self.c[collection].update({"_id":artifact_id}, {"$set" : {field:value}})
+            if field != "state":
+                #Because updating the state calls this method
+                self.update_artifact_state(collection, artifact_id)          
+                
+    def update_artifacts_by_id(self,collection,artifact_ids,field,value,document=None):
         """Given a list of artifact ids, update each one's field to value"""
         if type(artifact_ids) != list:
             self.logger.error("Error updating %s audio clip(%s)"%(collection,artifact_ids))
             raise IOError
         for artifact_id in artifact_ids:
-            self.c[collection].update({"_id":artifact_id}, {"$set" : {field:value}})    
+            self.update_artifact_by_id(collection,artifact_id,field,value,document)
+
+              
     
     def upsert_artifact(self,collection,search,document):
         """Artifacts that have external imposed unique IDs
             can be created with an upsert."""            
         self.c[collection].update(search,document,upsert = True)        
             
-    def remove_artifact_from_queue(self,artifact_queue):
+    def remove_artifacts_from_queue(self,queue_name,artifact_queue):
         """Remove the artifact_queue from the queue"""
-        self.remove_artifacts("queue",artifact_queue)
+        self.remove_artifacts(queue_name,artifact_queue)
         self.logger.info("Finished updating database(%s) queue."%self.db_name) 
+        
+    def get_collection_state_map(self,collection):
+        return self.c["state_maps"].find({})[0][collection]
             
     def induce_artifact_state(self,collection,artifact_id):
-        for func in self.get_collection_state_map(collection):
-            #Iterate sequentially over possible states given the artifact attributes
-            #The last state that is true is the actual state
-            pass           
-        
+        func_class, states = self.get_collection_state_map(collection)
+        instance = getattr(Elicitation,func_class)()
+        artifact = self.get_artifact_by_id(collection, artifact_id)
+        prev_state = "New"
+        for state in states:
+            func = getattr(instance,state)
+            res = func(artifact)
+            if not res:
+                return prev_state
+            prev_state = state
+        return state
+    
+    def update_artifacts_state(self,collection,artifact_ids):
+        for artifact_id in artifact_ids:
+            self.update_artifact_state(collection, artifact_id)
+        else:
+            return True
+        return False
+    
     def update_artifact_state(self,collection,artifact_id):
         """For ease of use, each class has an explicit state attribute value.
             However, states can always be determined by the state_map"""
@@ -488,7 +548,7 @@ class MongoElicitationHandler(object):
         self.logger.info("Updated(%s) state for: %s"%(collection,artifact_id))
         return True
     
-    def create_artifact(self,collection,search,document):
+    def create_artifact(self,collection,search,document,update=True):
         """Check to see if the artifact exists given search,
             create the artifact
             update the state by induction."""
@@ -497,20 +557,21 @@ class MongoElicitationHandler(object):
             self.c[collection].insert(document)
             art_id = self.get_artifact(collection, document,"_id")
             self.logger.info("Created %s artifact(%s) "%(collection,art_id))
+        elif update:
+            self.update_artifact_with_document(collection,art_id,document)
         self.update_artifact_state(collection, art_id)
         return art_id       
         
-    def create_elicitation_hit_artifact(self,hit_id,hit_type_id,prompt_queue):
-        if type(prompt_queue) != list:
+    def create_elicitation_hit_artifact(self,hit_id,hit_type_id,prompt_ids):
+        if type(prompt_ids) != list:
             raise IOError
-        prompts = [w["prompt_id"] for w in prompt_queue]
         document =  {"_id":hit_id,
                      "hit_type_id": hit_type_id,
-                     "prompts" : prompts}
+                     "prompts" : prompt_ids}
         art_id = self.create_artifact("elicitation_hits",{"_id": hit_id},document)
         return art_id
     
-    def create_assignment_artifact(self,assignment,transcription_ids):
+    def create_assignment_artifact(self,assignment,answers):
         """Create the assignment document with the transcription ids.
             AMTAssignmentStatus is the AMT assignment state.
             state is the engine lifecycle state."""
@@ -521,8 +582,8 @@ class MongoElicitationHandler(object):
                      "AutoApprovalTime" : assignment.AutoApprovalTime,
                      "hit_id" : assignment.HITId,
                      "worker_id" : assignment.WorkerId,
-                     "transcriptions" : transcription_ids}
-        art_id = self.create_artifact("assignments", {"_id": assignment_id},document)        
+                     "recordings" : answers}
+        art_id = self.create_artifact("elicitation_assignments", {"_id": assignment_id},document)        
         return art_id
     
     def create_prompt_source_artifact(self,uri,disk_space,prompt_count):
@@ -537,7 +598,7 @@ class MongoElicitationHandler(object):
                     "disk_space" : disk_space,
                     "prompt_count": prompt_count} 
         #soft source checking
-        art_id = self.create_artifact("audio_sources", search, document)
+        art_id = self.create_artifact("prompt_sources", search, document)
         return art_id
         
     def create_worker_artifact(self,worker_id):
@@ -549,27 +610,39 @@ class MongoElicitationHandler(object):
         art_id = self.create_artifact("workers",{"_id": worker_id},document)
         return art_id
     
-    def create_audio_clip_artifact(self,source_id,source_start_time,source_end_time,
-                                   uri,http_url,length_seconds,
-                                   disk_space,reference_transcription_id=None):
+    def create_prompt_artifact(self,source_id, words, normalized_words,line_number,rm_prompt_id,word_count):
         """A -1 endtime means to the end of the clip."""
         search = {"source_id" : source_id,
-                    "source_start_time" :source_start_time,
-                    "source_end_time" : source_end_time,
-                    "uri" : uri,
-                    "http_url": http_url,
-                    "length_seconds" : length_seconds,
-                    "disk_space" : disk_space}
+                    "line_number" : line_number,
+                    "rm_prompt_id" : rm_prompt_id,
+                    "word_count": word_count}
         document = {"source_id" : source_id,
-                    "source_start_time" :source_start_time,
-                    "source_end_time" : source_end_time,
-                    "uri" : uri,
-                    "http_url": http_url,
-                    "length_seconds" : length_seconds,
-                    "disk_space" : disk_space,
-                    "reference_transcription_id" : reference_transcription_id}
-        art_id = self.create_artifact("audio_clips", search, document)
+                    "line_number" : line_number,
+                    "rm_prompt_id" : rm_prompt_id,
+                    "words" : words,
+                    "normalized_words": normalized_words,
+                    "word_count": word_count}
+        art_id = self.create_artifact("prompts", search, document)
         return art_id
+    
+    def create_recording_source_artifact(self,prompt_id,recording_url):
+        """Use the recording handler to download the recording
+            and create the artifact"""
+        recording_uri = self.rh.download_vocaroo_recording(recording_url)
+        search = {"recording_url" : recording_url}
+        document = {"recording_url": recording_url,
+                    "prompt_id": prompt_id,
+                    "recording_uri": recording_uri}
+        art_id = self.create_artifact("recording_sources", search, document)
+        return art_id
+        
+    def add_item_to_artifact_set(self,collection,artifact_id,field,value):
+        self.init_artifact_set(collection,artifact_id,field,[])
+        if ObjectId.is_valid(artifact_id):
+            self.c[collection].update({"_id":ObjectId(artifact_id)},{"$addToSet":{field: value}})
+        else:
+            self.c[collection].update({"_id":artifact_id},{"$addToSet":{field: value}})
+        self.update_artifact_state(collection, artifact_id)
         
     def add_assignment_to_worker(self,worker_id,assignment_tup):
         self.c["workers"].update({"_id":worker_id},{"$addToSet":{"submitted_assignments": assignment_tup}})            
@@ -602,7 +675,7 @@ class MongoElicitationHandler(object):
     def get_prompt_pairs(self,prompt_queue):
         """Given the queue entries, return the id and text for the prompt
         """
-        return [(self.get_artifact("prompts",{"_id":w["prompt_id"]},field="text"),w["prompt_id"]) for w in prompt_queue]
+        return [(self.get_artifact("prompts",{"_id":w["prompt_id"]},field="normalized_words"),w["prompt_id"]) for w in prompt_queue]
                
     def enqueue_prompt(self,prompt_id,priority=1,max_queue_size=3):
         """Queue the audio prompt."""        
@@ -613,7 +686,7 @@ class MongoElicitationHandler(object):
                               "processing" : None,
                               },
                              upsert = True)
-        self.update_artifact_state("prompts", prompt_id)
+        self.update_artifacts_by_id("prompts", [prompt_id], "inqueue", "prompt_queue")
         self.logger.info("Queued prompt: %s "%prompt_id)
         
     def get_prompt_queue(self):
@@ -622,8 +695,7 @@ class MongoElicitationHandler(object):
             Find the largest queue that is full
             Update the queue and return the clips"""
         qname = "prompt_queue"          
-        self.rev
-        self.revive_queue()
+        self.revive_queue("prompt_queue")
         queue = self.c[qname].find({"processing":None}).limit(MAX_QUEUE_VIEW)
         max_sizes = defaultdict(list)
         for prompt in queue:
