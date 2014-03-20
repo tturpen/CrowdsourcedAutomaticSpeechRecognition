@@ -23,9 +23,10 @@ from shutil import copyfile
 
 import logging
 import os
+import datetime
 
-#HOST='mechanicalturk.amazonaws.com'
-HOST='mechanicalturk.sandbox.amazonaws.com'
+HOST='mechanicalturk.amazonaws.com'
+#HOST='mechanicalturk.sandbox.amazonaws.com'
 
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
 
@@ -260,8 +261,8 @@ class TranscriptionPipelineHandler():
                                                                                        transcription_prompt,
                                                                                        "Gold")
                     #Completes audio clip to Referenced
-                    self.mh.update_audio_clip_reference_transcription(clip_id,transcription_id)
-
+                    self.mh.update_audio_clip_reference_transcription(clip_id,transcription_id)                    
+        
     def all_workers_liveness(self):
         workers = self.mh.get_all_workers()
         for worker in workers:
@@ -303,6 +304,23 @@ class TranscriptionPipelineHandler():
         av = all_wer_per_approved_assignment/total_accepted
         print("Average WER per assignment(%s)"%(av))
         
+    def get_assignment_stats(self):
+        self.effective_hourly_wage_for_approved_assignments(.20)                    
+    
+    def effective_hourly_wage_for_approved_assignments(self,reward_per_assignment):
+        """Calculate the effective hourly wage for Approved Assignments"""        
+        approved_assignments = self.mh.get_artifacts_by_state("assignments","Approved")
+        total = datetime.timedelta(0)
+        count = 0
+        for assignment in approved_assignments:
+            accepted = datetime.datetime.strptime(assignment["AcceptTime"],"%Y-%m-%dT%H:%M:%SZ")
+            submitted = datetime.datetime.strptime(assignment["SubmitTime"],"%Y-%m-%dT%H:%M:%SZ")
+            total += submitted-accepted
+            count += 1
+        seconds_per_assignment = total.total_seconds()/count
+        effective_hourly_wage = 60.0*60.0/seconds_per_assignment * reward_per_assignment
+        print("Effective completion time(%s) *reward(%s) = %s"%(seconds_per_assignment,reward_per_assignment,effective_hourly_wage))        
+        
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
         #first = self.ah.get_submitted_transcriptions(hit_id,str(clipid))
@@ -327,6 +345,58 @@ class TranscriptionPipelineHandler():
                         self.conn.disable_hit(hit_id)
                     except MTurkRequestError as e:
                         raise e
+                    
+    def run(self):
+        audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/ind_trn"
+        #audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/dep_trn"
+        prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
+        base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
+        selection = 0
+        init_clip_count = 10000
+        while selection != "11":
+            selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
+                                     1: AudioSource-FileToClipped: Initialize Resource Management audio source files to %d queueable(Referenced) clips
+                                     2: AudioClip-ReferencedToHit: Queue all referenced audio clips and create a HIT if the queue is full.
+                                     3: AudioClip-HitToSubmitted: Check all submitted assignments for Transcriptions.
+                                     4: AudioClip-SubmittedToApproved: Check all submitted clips against their reference.
+                                     5: Review Current Hits
+                                     6: Worker liveness
+                                     7: Account balance
+                                     8: Worker stats
+                                     9: Recalculate worker WER                                     
+                                     10: Assignment Stats
+                                     11: Exit
+                                    """%init_clip_count)
+            #selection = "5"
+            if selection == "1":
+                self._load_rm_audio_source_file_to_clipped(audio_file_dir,
+                                                       prompt_file_uri,
+                                                       base_clip_dir,init_clip_count=init_clip_count)
+            elif selection == "2":
+                self.audio_clip_referenced_to_hit()
+            elif selection == "3":
+                self.load_assignments_hit_to_submitted()
+            elif selection == "4":
+                self.assignment_submitted_approved()
+            elif selection == "5":
+                self.allhits_liveness()
+            elif selection == "6":
+                self.all_workers_liveness()
+            elif selection == "7":
+                print("Account balance: %s"%self.balance)
+            elif selection == "8":
+                self.stats()
+            elif selection == "9":
+                self.recalculate_worker_assignment_wer()
+            elif selection == "10":
+                self.get_assignment_stats()
+
+#     def get_time_submitted_for_assignments(self):
+#         assignments = self.mh.get_all_artifacts("assignments")
+#         for assignment in assignments:
+#             assignment_id = assignment["_id"]
+#             a_assignment = self.conn.get_assignment(assignment_id)[0]
+#             self.mh.update_artifact_by_id("assignments", assignment_id, "SubmitTime", a_assignment.SubmitTime)
                     
 #     def recalculate_worker_assignment_wer(self):
 #         """For all submitted assignments,

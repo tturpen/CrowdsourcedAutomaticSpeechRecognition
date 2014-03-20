@@ -367,6 +367,21 @@ class MongoTranscriptionHandler(object):
                                                 )
         return max_q
     
+    def update_artifact_by_id(self,collection,artifact_id,field=None,value=None,document=None):
+        if document:
+            #Careful, this replaces the document entirely
+            if ObjectId.is_valid(artifact_id):
+                self.c[collection].update({"_id":ObjectId(artifact_id)}, document)
+            else:
+                self.c[collection].update({"_id":artifact_id}, document)
+        elif field and value:
+            if ObjectId.is_valid(artifact_id):
+                self.c[collection].update({"_id":ObjectId(artifact_id)}, {"$set" : {field:value}})
+            else:
+                self.c[collection].update({"_id":artifact_id}, {"$set" : {field:value}})
+        else:
+            raise WrongParametersExecption
+    
 class MongoElicitationHandler(object):
     default_db_loc = 'mongodb://localhost:27017'
 
@@ -374,7 +389,7 @@ class MongoElicitationHandler(object):
         self.queue_revive_time = 5 
         client = MongoClient(self.default_db_loc)
         self.db_name = "elicitation"
-        self.db = client.elicitation_db
+        self.db = client.production_elicitation_db
         self.c = {}#dictionary of collections
         
         #Initialize the state maps
@@ -548,7 +563,7 @@ class MongoElicitationHandler(object):
             However, states can always be determined by the state_map"""
         new_state = self.induce_artifact_state(collection,artifact_id)
         self.update_artifacts_by_id(collection,[artifact_id],"state",new_state)
-        self.logger.info("Updated(%s) state for: %s"%(collection,artifact_id))
+        self.logger.info("Updated(%s) state for: %s to %s"%(collection,artifact_id,new_state))
         return True
     
     def create_artifact(self,collection,search,document,update=True):

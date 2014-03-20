@@ -61,8 +61,8 @@ logger.addHandler(ch)
 
 
 def main():
-    elicitation_engine()
-    #transcription_engine()
+    #elicitation_engine()
+    transcription_engine()
     
 def elicitation_engine():
     eph = ElicitationPipelineHandler()
@@ -71,46 +71,8 @@ def elicitation_engine():
     
 def transcription_engine():    
     tph = TranscriptionPipelineHandler()
-    audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/ind_trn"
-    #audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/dep_trn"
-    prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
-    base_clip_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/clips"
-    selection = 0
-    init_clip_count = 10000
-    while selection != "10":
-        selection = raw_input("""Audio Source file to Audio Clip Approved Pipeline:\n
-                                 1: AudioSource-FileToClipped: Initialize Resource Management audio source files to %d queueable(Referenced) clips
-                                 2: AudioClip-ReferencedToHit: Queue all referenced audio clips and create a HIT if the queue is full.
-                                 3: AudioClip-HitToSubmitted: Check all submitted assignments for Transcriptions.
-                                 4: AudioClip-SubmittedToApproved: Check all submitted clips against their reference.
-                                 5: Review Current Hits
-                                 6: Worker liveness
-                                 7: Account balance
-                                 8: Worker stats
-                                 9: Recalculate worker WER
-                                 10: Exit
-                                """%init_clip_count)
-        #selection = "5"
-        if selection == "1":
-            tph._load_rm_audio_source_file_to_clipped(audio_file_dir,
-                                                   prompt_file_uri,
-                                                   base_clip_dir,init_clip_count=init_clip_count)
-        elif selection == "2":
-            tph.audio_clip_referenced_to_hit()
-        elif selection == "3":
-            tph.load_assignments_hit_to_submitted()
-        elif selection == "4":
-            tph.assignment_submitted_approved()
-        elif selection == "5":
-            tph.allhits_liveness()
-        elif selection == "6":
-            tph.all_workers_liveness()
-        elif selection == "7":
-            print("Account balance: %s"%tph.balance)
-        elif selection == "8":
-            tph.stats()
-        elif selection == "9":
-            tph.recalculate_worker_assignment_wer()
+    tph.run()
+    
     
 
 

@@ -12,6 +12,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import datetime
+
 class Comparisons(object):
     def __init__(self):
         self.map = []
@@ -24,6 +26,9 @@ class Comparisons(object):
     
     def alpha_numeric(self,parameter,artifact):
         return parameter in artifact and artifact[parameter].isalnum()
+    
+    def before_now(self,parameter,artifact):
+        return parameter in artifact and artifact[parameter] < datetime.datetime.now()
   
 #For all classes, order of the state map matters. For the first function that fails
 #The previous function's value with be taken  
@@ -70,7 +75,7 @@ class ElicitationAssignment(Comparisons):
         self.map = ["Submitted","Approved"]
         
     def Approved(self,artifact):
-        return self.greater_than_zero("approval",artifact)
+        return self.before_now("approval_time",artifact)
     
     def Submitted(self,artifact):
         return self.greater_than_zero("recordings",artifact)

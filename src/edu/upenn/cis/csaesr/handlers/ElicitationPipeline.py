@@ -25,9 +25,11 @@ from text.Normalization import Normalize
 
 import logging
 import os
+import datetime
+import time
 
-#HOST='mechanicalturk.amazonaws.com'
-HOST='mechanicalturk.sandbox.amazonaws.com'
+HOST='mechanicalturk.amazonaws.com'
+#HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
 cost_sensitive = True
 
@@ -114,10 +116,46 @@ class ElicitationPipelineHandler(object):
                         self.mh.add_item_to_artifact_set("workers", worker_oid, "submitted_assignments", assignment_id)
                 print("Elicitation HIT(%s) submitted assignments: %s "%(hit_id,assignment_ids))    
 
+    def approve_assignment_submitted_to_approved(self):
+        """Approve all submitted assignments"""
+        hits = self.conn.get_all_hits()
+        for hit in hits:
+            transcription_dicts = [{}]
+            hit_id = hit.HITId
+            if self.mh.get_artifact("elicitation_hits",{"_id": hit_id}):
+                assignments = self.conn.get_assignments(hit_id)
+                have_all_assignments = True
+                assignment_ids = []
+                for assignment in assignments:
+                    assignment_id = assignment.AssignmentId
+                    assignment_ids.append(assignment_id)  
+                    if self.mh.get_artifact("elicitation_assignments",{"_id":assignment.AssignmentId,"state":"Submitted"}):
+                        #WARNING: this Approves every assignment
+                        self.conn.approve_assignment(assignment_id, "Thank you for completing this assignment!")
+                        self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "approval_time", datetime.datetime.now())                        
+                        
+    def get_assignment_stats(self):
+        effective_hourly_wage = self.effective_hourly_wage_for_approved_assignments(.25)                    
+    
+    def effective_hourly_wage_for_approved_assignments(self,reward_per_assignment):
+        """Calculate the effective hourly wage for Approved Assignments"""        
+        approved_assignments = self.mh.get_artifacts_by_state("elicitation_assignments","Approved")
+        total = datetime.timedelta(0)
+        count = 0
+        for assignment in approved_assignments:
+            accepted = datetime.datetime.strptime(assignment["AcceptTime"],"%Y-%m-%dT%H:%M:%SZ")
+            submitted = datetime.datetime.strptime(assignment["SubmitTime"],"%Y-%m-%dT%H:%M:%SZ")
+            total += submitted-accepted
+            count += 1
+            #self.mh.update_artifact_by_id("elicitation_assignments", assignment["_id"], "SubmitTime", completion_time)
+        seconds_per_assignment = total.total_seconds()/count
+        effective_hourly_wage = 60.0*60.0/seconds_per_assignment * reward_per_assignment
+        print("Effective completion time(%s) *reward(%s) = %s"%(seconds_per_assignment,reward_per_assignment,effective_hourly_wage))
+                        
     def recording_sources_generate_worker_sorted_html(self):
         sources = self.mh.get_all_artifacts("recording_sources")
         for source in sources:
-            if not self.mh.get_artifact("workers", {"eid": source["worker_id"]}, refine):
+            if not self.mh.get_artifact("workers", {"eid": source["worker_id"]}):
                 pass
             
     def enqueue_prompts_and_generate_hits(self):
@@ -207,14 +245,15 @@ class ElicitationPipelineHandler(object):
         #audio_file_dir = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/dep_trn"
         prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
         selection = 0
+        #self.get_time_submitted_for_assignments()
         while selection != "12":
             selection = raw_input("""Prompt Source raw to Elicitations-Approved Pipeline:\n
                                      1: PromptSource-Load_RawToList: Load Resource Management 1 prompt source files to queueable prompts
                                      2: Prompt-ReferencedToHit: Queue all referenced prompts and create a HIT if the queue is full.
                                      3: Prompt-HitToAssignmentSubmitted: Check all submitted assignments for Elicitations.
                                      4: RecordingSources-GenerateWorkerSortedHtml: Check all submitted assignments for Elicitations.
-                                     5: Elicitation-NewToSecondPassQueue: Check all submitted clips against their reference.
-                                     6: Elicitation-NewToApproved: Check all submitted clips against their reference.
+                                     5: Review Current Hits
+                                     6: ElicitationAssignment-SubmittedToApproved: Approve submitted assignments.
                                      7: Review Current Hits
                                      8: Worker liveness
                                      9: Account balance
@@ -232,7 +271,18 @@ class ElicitationPipelineHandler(object):
                 self.recording_sources_generate_worker_sorted_html()
             elif selection == "5":
                 self.allhits_liveness()
+            elif selection == "6":
+                self.approve_assignment_submitted_to_approved()
+            elif selection == "7":
+                self.get_assignment_stats()
             else:
                 selection = "12"
                 
 #    prompt_dict = self.ph.get_prompts(prompt_file_uri)
+
+#     def get_time_submitted_for_assignments(self):
+#         assignments = self.mh.get_all_artifacts("elicitation_assignments")
+#         for assignment in assignments:
+#             assignment_id = assignment["_id"]
+#             a_assignment = self.conn.get_assignment(assignment_id)[0]
+#             self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "SubmitTime", a_assignment.SubmitTime)
