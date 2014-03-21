@@ -127,9 +127,7 @@ class Normalize(object):
             return self.base_tup(tups[-1])
             
     def from_numeric(self,numeric_word):
-        if numeric_word.isalpha() or \
-            not any([numeric_word.endswith(suffix) for suffix in suffixes]) and\
-            not numeric_word.isdigit():
+        if not any([numeric_word.strip(suffix).isdigit() for suffix in suffixes]):
             return [numeric_word]
         result = []
         word =  self.ones_tens(ones_tens_dict, numeric_word)
