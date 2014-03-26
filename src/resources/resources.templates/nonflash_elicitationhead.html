@@ -16,6 +16,37 @@
         results = regex.exec(location.search);
     return results == null ? null : decodeURIComponent(results[1].replace(/\+/g, " "));
   }
+
+  function getCookie(cname){
+	  var name = cname + "=";
+	  var allcookies = document.cookie.split(';');
+	  for(var i=0; i < allcookies.length; i++)
+		  {
+		  var c = allcookies[i].trim();
+		  if (c.indexOf(name)==0)
+			  return c.substring(name.length,c.length); 
+		  }
+	  return "";
+  }
+  
+  function setCookie(cname,value){
+	  document.cookie = cname + "="+value+"; ";
+  }
+  function setZipcodeCookie(){
+	  setCookie("zipcode",document.getElementById("zipcode").value);
+  }
+  
+  function getSetPrefCookie() {
+	  //document.getElementById("zipcode").addEventListener("onblur",setCookie("zipcode",document.getElementById("zipcode").value));
+	  var group_id = getParameterByName("groupId");
+	  var cookie_group_id = getCookie("groupId");
+	  if (cookie_group_id != group_id){
+		  setCookie("groupId",group_id)
+	  }
+	  window.zipcode = getCookie("zipcode");
+	  document.getElementById("zipcode").value = window.zipcode;		
+  }
+  
   function validateForm(){
 	  if (window.validate)
 		  return true;
@@ -69,6 +100,7 @@
 
   function loadFuncs(){
 	  disableInput();
+	  getSetPrefCookie();
 	  window.promptIds = [${prompt_id}];
 	  disableSubmitButton();
 	  window.recordedIds = new Array();
@@ -85,7 +117,9 @@
   .hide:target ~ .list {display:inline; }
   @media print { .hide, .show {display: none; }}
 </style>
-</head><body><form name="mturk_form" method="post" id="mturk_form" action="https://www.mturk.com/mturk/externalSubmit"><input type="hidden" value="" name="assignmentId" id="assignmentId" />
+</head><body>
+
+<form name="mturk_form" method="post" id="mturk_form" action="https://www.mturk.com/mturk/externalSubmit"><input type="hidden" value="" name="assignmentId" id="assignmentId" />
 <div id="title">
   <h3>Record Yourself Speaking the Prompt</h3>
 
@@ -95,3 +129,5 @@
   </ul>
 </div>
 </div>
+<p>Enter your US postal zipcode here:</p>
+<p><input id="zipcode" name="zipcode" size="100" type="text" onblur="setZipcodeCookie();"/></p>

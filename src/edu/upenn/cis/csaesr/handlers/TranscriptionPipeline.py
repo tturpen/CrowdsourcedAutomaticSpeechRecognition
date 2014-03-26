@@ -313,8 +313,11 @@ class TranscriptionPipelineHandler():
         total = datetime.timedelta(0)
         count = 0
         for assignment in approved_assignments:
-            accepted = datetime.datetime.strptime(assignment["AcceptTime"],"%Y-%m-%dT%H:%M:%SZ")
-            submitted = datetime.datetime.strptime(assignment["SubmitTime"],"%Y-%m-%dT%H:%M:%SZ")
+            if "SubmitTime" in assignment:
+                accepted = datetime.datetime.strptime(assignment["AcceptTime"],"%Y-%m-%dT%H:%M:%SZ")
+                submitted = datetime.datetime.strptime(assignment["SubmitTime"],"%Y-%m-%dT%H:%M:%SZ")
+            else:
+                pass
             total += submitted-accepted
             count += 1
         seconds_per_assignment = total.total_seconds()/count

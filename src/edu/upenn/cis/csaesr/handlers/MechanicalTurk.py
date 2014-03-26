@@ -14,7 +14,8 @@
 from boto.mturk.connection import MTurkConnection, MTurkRequestError
 from boto.mturk.question import ExternalQuestion, QuestionForm, Overview, HTMLQuestion, QuestionContent, FormattedContent, FreeTextAnswer, AnswerSpecification, Question, Flash, SelectionAnswer
 from handlers.Exceptions import IncorrectTextFieldCount
-from text.CustomXml import FlashXml
+from boto.mturk import qualification
+#from text.CustomXml import FlashXml
 import os
 import logging
 
@@ -170,8 +171,8 @@ class HitHandler():
         
 #         for i, description in enumerate(descriptions):            
 #             overview.append_field("%dDescription"%i, description)
-        flash_xml = FlashXml(self.flash_xml.replace(self.html_tags["flash_url"],self.vocaroo_url))
-        overview.append(flash_xml)
+#         flash_xml = FlashXml(self.flash_xml.replace(self.html_tags["flash_url"],self.vocaroo_url))
+#         overview.append(flash_xml)
         question_form.append(overview)
         
         qc = QuestionContent()
@@ -186,21 +187,15 @@ class HitHandler():
                      content=qc,
                      answer_spec=AnswerSpecification(answer))
         question_form.append(q)
-#         
-#         for prompt_words,prompt_id in prompt_list:
-#             qc = QuestionContent()
-#             qc.append_field("Title",prompt_words)            
-#             fta = FreeTextAnswer()
-#             q = Question(identifier=prompt_id,
-#                          content=qc,
-#                          answer_spec=AnswerSpecification(fta))
-#             question_form.append(q)
+
+        qual = qualification.LocaleRequirement("in","USA")
         reward = reward_per_clip * len(prompt_list)
         xml = question_form.get_as_xml()
         try:
             response = self.conn.create_hit(questions=question_form,
                              max_assignments=1,
                              title=hit_title,
+                             qualification= qual,
                              description=descriptions[0],
                              keywords=keywords,
                              duration=duration,
@@ -210,15 +205,14 @@ class HitHandler():
                 raise 
         return True
     
-    def make_html_elicitation_HIT(self,prompt_list,hit_title,prompt_title,keywords,
+    def make_html_elicitation_HIT(self,prompt_list,hit_title,prompt_title,keywords,hit_description,
                                   duration=DEFAULT_DURATION,reward_per_clip=DEFAULT_REWARD,max_assignments=DEFAULT_MAX_ASSIGNMENTS):
         overview = Overview()
         overview.append_field("Title", "Record yourself speaking the words in the prompt.")
         descriptions = ["The following prompts are in English.",
                         "Click the prompt to record your voice (Redirects to recording Page).",
                         "Follow the directions on that page.",
-                        "Copy and paste the URL in box below the prompt on this page.",
-                        "You will NEVER be asked to divulge any personal or identifying information."
+                        "Copy and paste the URL in box below the prompt on this page."                        
                         ]
         keywords = "audio, recording, elicitation, English"
         
@@ -263,12 +257,16 @@ class HitHandler():
         open("/home/taylor/csaesr/tmp/hithtml.html","w").write(html)
         
         #reward calculation
+        
+        quals = qualification.Qualifications()
+        quals.add(qualification.LocaleRequirement("EqualTo","US"))
         reward = reward_per_clip*len(prompt_list)
         try:
             return self.conn.create_hit(title=hit_title,
                                     question=html_question,
                                     max_assignments=max_assignments,
-                                    description=description,
+                                    description=hit_description,
+                                    qualifications=quals,
                                     keywords=keywords,
                                     duration = duration,
                                     reward = reward)

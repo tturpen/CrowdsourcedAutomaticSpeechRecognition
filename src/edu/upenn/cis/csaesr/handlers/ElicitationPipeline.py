@@ -15,7 +15,8 @@ from boto.mturk.connection import MTurkConnection, MTurkRequestError, ResultSet
 from handlers.MechanicalTurk import AssignmentHandler, TurkerHandler, HitHandler
 from handlers.MongoDB import MongoElicitationHandler
 
-from handlers.Audio import WavHandler, PromptHandler
+from handlers.Audio import PromptHandler
+from handlers.Audio import WavHandler
 from handlers.Exceptions import WavHandlerException, PromptNotFound
 from filtering.StandardFilter import Filter
 from util.calc import cer_wer
@@ -53,7 +54,7 @@ class ElicitationPipelineHandler(object):
         self.ph = PromptHandler()
         self.filter = Filter(self.mh)
         self.balance = self.conn.get_account_balance()[0].amount
-        self.batch_cost = 20
+        self.batch_cost = 230
         if self.balance > self.batch_cost:
             self.balance = self.batch_cost
         else:
@@ -135,7 +136,7 @@ class ElicitationPipelineHandler(object):
                         self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "approval_time", datetime.datetime.now())                        
                         
     def get_assignment_stats(self):
-        effective_hourly_wage = self.effective_hourly_wage_for_approved_assignments(.25)                    
+        effective_hourly_wage = self.effective_hourly_wage_for_approved_assignments(.20)                    
     
     def effective_hourly_wage_for_approved_assignments(self,reward_per_assignment):
         """Calculate the effective hourly wage for Approved Assignments"""        
@@ -167,9 +168,10 @@ class ElicitationPipelineHandler(object):
             if prompt_pairs:
                 hit_title = "Audio Elicitation"
                 question_title = "Speak and Record your Voice" 
+                hit_description = "Speak the prompt and record your voice."
                 keywords = "audio, elicitation, speech, recording"
                 if cost_sensitive:
-                    reward_per_clip = 0.05
+                    reward_per_clip = 0.04
                     max_assignments = 2
                     estimated_cost = self.hh.estimate_html_HIT_cost(prompt_pairs,reward_per_clip=reward_per_clip,\
                                                                     max_assignments=max_assignments)
@@ -180,7 +182,8 @@ class ElicitationPipelineHandler(object):
                     elif self.balance - estimated_cost >= 0:
                         #if we have enough money, create the HIT
                         response = self.hh.make_html_elicitation_HIT(prompt_pairs,hit_title,
-                                                     question_title, keywords,max_assignments=max_assignments,reward_per_clip=reward_per_clip)
+                                                     question_title, keywords,hit_description,
+                                                     max_assignments=max_assignments,reward_per_clip=reward_per_clip)
 #                         response = self.hh.make_question_form_elicitation_HIT(prompt_pairs,hit_title,
 #                                                      question_title, keywords)
                         self.balance = self.balance - estimated_cost
@@ -195,6 +198,7 @@ class ElicitationPipelineHandler(object):
                             self.logger.info("Successfully created HIT: %s"%hit_id)
                     else:
                         return True
+        print("Amount left in batch: %s out of %s" % (self.balance,self.batch_cost))
                     
     def allhits_liveness(self):
         #allassignments = self.conn.get_assignments(hit_id)
@@ -254,7 +258,7 @@ class ElicitationPipelineHandler(object):
                                      4: RecordingSources-GenerateWorkerSortedHtml: Check all submitted assignments for Elicitations.
                                      5: Review Current Hits
                                      6: ElicitationAssignment-SubmittedToApproved: Approve submitted assignments.
-                                     7: Review Current Hits
+                                     7: Calculate wage stats
                                      8: Worker liveness
                                      9: Account balance
                                      10: Worker stats

@@ -32,7 +32,7 @@ class MongoTranscriptionHandler(object):
     def __init__(self):
         client = MongoClient(self.default_db_loc)
         self.queue_revive_time = 5       
-        self.db = client.production_transcription_db
+        self.db = client.transcription_db
         self.c = {}#dictionary of collections
         self.c["audio_sources"] = self.db.audio#The full audio files
         self.c["audio_clips"] = self.db.audio_clips#portions of the full audio files
