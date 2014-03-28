@@ -29,6 +29,9 @@ class Comparisons(object):
     
     def before_now(self,parameter,artifact):
         return parameter in artifact and artifact[parameter] < datetime.datetime.now()
+    
+    def equals(self,parameter,artifact,expected):
+        return parameter in artifact and artifact[parameter] == expected
   
 #For all classes, order of the state map matters. For the first function that fails
 #The previous function's value with be taken  
@@ -75,23 +78,27 @@ class ElicitationAssignment(Comparisons):
         self.map = ["Submitted","Approved"]
         
     def Approved(self,artifact):
-        return self.before_now("approval_time",artifact)
+        return self.before_now("approval_time",artifact) or \
+            self.equals("AMTAssignmentStatus", artifact, "Approved")
     
     def Submitted(self,artifact):
         return self.greater_than_zero("recordings",artifact)
     
 class Worker(Comparisons):
     def __init__(self):
-        self.map = ["Submitted","Approved","Denied","Blocked"]
+        self.map = ["Submitted","Approved","Rejected","Denied","Blocked"]
         
     def Submitted(self,artifact):
         return self.greater_than_zero("submitted_assignments",artifact)
         
     def Approved(self,artifact):
-        return self.greater_than_zero("approved_assignments",artifact)
+        return self.before_now("approval_time",artifact)
     
     def Denied(self,artifact):
         return self.greater_than_zero("denied_assignments",artifact)
+    
+    def Rejected(self,artifact):
+        return self.greater_than_zero("rejection_reason",artifact)
     
     def Blocked(self,artifact):
         return self.greater_than_zero("blocked_assignments",artifact)
