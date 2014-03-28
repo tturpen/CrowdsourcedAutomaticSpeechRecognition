@@ -21,6 +21,7 @@ from handlers.Exceptions import WavHandlerException, PromptNotFound
 from filtering.StandardFilter import Filter
 from util.calc import cer_wer
 from shutil import copyfile
+from subprocess import call
 
 from text.Normalization import Normalize
 
@@ -54,7 +55,7 @@ class ElicitationPipelineHandler(object):
         self.ph = PromptHandler()
         self.filter = Filter(self.mh)
         self.balance = self.conn.get_account_balance()[0].amount
-        self.batch_cost = 230
+        self.batch_cost = 1
         if self.balance > self.batch_cost:
             self.balance = self.batch_cost
         else:
@@ -89,8 +90,8 @@ class ElicitationPipelineHandler(object):
                     assignment_ids.append(assignment_id)  
                     if self.mh.get_artifact("elicitation_assignments",{"_id":assignment.AssignmentId}):
                         #We create assignments here, so if we already have it, skip
-                        #continue
-                        pass
+                        continue
+                        #pass
                     else:
                         have_all_assignments = False                                         
                     recording_ids = []                
@@ -99,7 +100,11 @@ class ElicitationPipelineHandler(object):
                     worker_id_tag = "worker_id"
                     recording_dict = self.ah.get_assignment_submitted_text_dict(assignment,prompt_id_tag,recording_url_tag)
                     worker_oid = self.mh.create_worker_artifact(assignment.WorkerId)   
+                    zipcode = None
                     for recording in recording_dict:
+                        if recording[prompt_id_tag] == "zipcode":
+                            zipcode = recording[recording_url_tag]
+                            continue
                         if not self.mh.get_artifact_by_id("prompts",recording[prompt_id_tag]): 
                             self.logger.info("Assignment(%s) with unknown %s(%s) skipped"%\
                                         (assignment_id,prompt_id_tag,recording[prompt_id_tag]))
@@ -107,12 +112,17 @@ class ElicitationPipelineHandler(object):
                         recording_id = self.mh.create_recording_source_artifact(recording[prompt_id_tag],
                                                                          recording[recording_url_tag],
                                                                          recording[worker_id_tag])
+                        if not recording_id:
+                            self.mh.create_assignment_artifact(assignment,
+                                                       recording_ids,zipcode=zipcode,incomplete=True)
+                            break
+                        
                         self.mh.add_item_to_artifact_set("prompts", recording[prompt_id_tag], "recording_sources",
                                                        recording_id)
                         recording_ids.append(recording_id)
                     else:
                         self.mh.create_assignment_artifact(assignment,
-                                                       recording_ids)
+                                                       recording_ids,zipcode=zipcode)
                         self.mh.add_item_to_artifact_set("elicitation_hits", hit_id, "submitted_assignments", assignment_id)
                         self.mh.add_item_to_artifact_set("workers", worker_oid, "submitted_assignments", assignment_id)
                 print("Elicitation HIT(%s) submitted assignments: %s "%(hit_id,assignment_ids))    
@@ -130,10 +140,73 @@ class ElicitationPipelineHandler(object):
                 for assignment in assignments:
                     assignment_id = assignment.AssignmentId
                     assignment_ids.append(assignment_id)  
-                    if self.mh.get_artifact("elicitation_assignments",{"_id":assignment.AssignmentId,"state":"Submitted"}):
+                    if self.mh.get_artifact("elicitation_assignments",{"_id":assignment_id,"state":"Submitted"}):
                         #WARNING: this Approves every assignment
                         self.conn.approve_assignment(assignment_id, "Thank you for completing this assignment!")
-                        self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "approval_time", datetime.datetime.now())                        
+                        self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "approval_time", datetime.datetime.now())
+                        
+    def approve_assignment_by_worker(self):
+        """Approve all submitted assignments"""
+        approval_comment = "Thank you for your recordings, good work, assignment approved!"
+        denial_comment = "I'm sorry but your work was denied because %s"
+        hits = self.conn.get_all_hits()
+        for hit in hits:
+            transcription_dicts = [{}]
+            hit_id = hit.HITId
+            if self.mh.get_artifact("elicitation_hits",{"_id": hit_id}):
+                assignments = self.conn.get_assignments(hit_id)
+                have_all_assignments = True
+                assignment_ids = []
+                for assignment in assignments:
+                    assignment_id = assignment.AssignmentId
+                    assignment_ids.append(assignment_id)  
+                    if self.mh.get_artifact("elicitation_assignments",{"_id":assignment_id,"state":"Submitted"}):
+                        #WARNING: this Approves every assignment
+                        assignment_artifact = self.mh.get_artifact("elicitation_assignments", {"_id":assignment_id})
+                        recording_ids = assignment_artifact["recordings"]
+                        worker = self.mh.get_artifact("workers", {"eid":assignment_artifact["worker_id"]})
+                        if worker["state"] == "Approved":
+                            #If the worker is approved, approve the assignment automatically
+                            self.conn.approve_assignment(assignment_id, approval_comment)
+                            self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "approval_time", datetime.datetime.now())
+                            continue      
+                        elif worker["state"] == "Rejected":
+                            self.conn.reject_assignment(assignment_id, worker["rejection_reason"])
+                            self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "approval_time", datetime.datetime.now())
+                            continue                                               
+                        recording_uris = []
+                        for recording_id in recording_ids:
+                            uri = self.mh.get_artifact_by_id("recording_sources", recording_id, "recording_uri")
+                            recording_uris.append(uri)
+                        command = ["gnome-mplayer"]+recording_uris
+                        if len(recording_uris) > 0 and recording_uris[0].endswith(" .wav") or recording_uris[0].endswith(".com.wav"):
+                            continue
+                        print("Calling: %s"%command) 
+                        call(command)
+                        approve_assignment = raw_input("Approve assignment(y/n/s)?")
+                        if approve_assignment == "s":
+                            #skip
+                            continue
+                        elif approve_assignment == "y":
+                            #accept the assignment
+                            self.conn.approve_assignment(assignment_id, approval_comment)
+                            self.mh.update_artifact_by_id("elicitation_assignments", assignment_id, "approval_time", datetime.datetime.now())
+                            approve_worker = raw_input("Approve worker(y/n)?")
+                            if approve_worker == "y":
+                                #approve the worker and all future assignments
+                                self.mh.update_artifact_by_id("workers", worker["_id"], "approval_time", datetime.datetime.now())
+                        elif approve_assignment == "n":
+                            #Reject the assignment
+                            reject_worker = raw_input("Reject this worker's future work?")                            
+                            if reject_worker == "y":
+                                #Reject the worker
+                                reason = raw_input("Reason for rejecting this worker's future work:")
+                                self.mh.update_artifact_by_id("workers", worker["_id"], "rejection_reason", reason)
+                                self.conn.reject_assignment(assignment_id, denial_comment%reason+".")
+                            else:
+                                reason = raw_input("Why reject the assignment?")
+                                self.conn.reject_assignment(assignment_id, denial_comment%reason+".")
+                        
                         
     def get_assignment_stats(self):
         effective_hourly_wage = self.effective_hourly_wage_for_approved_assignments(.20)                    
@@ -259,7 +332,7 @@ class ElicitationPipelineHandler(object):
                                      5: Review Current Hits
                                      6: ElicitationAssignment-SubmittedToApproved: Approve submitted assignments.
                                      7: Calculate wage stats
-                                     8: Worker liveness
+                                     8: Approve assignment by worker 
                                      9: Account balance
                                      10: Worker stats
                                      11: Recalculate worker WER
@@ -279,6 +352,8 @@ class ElicitationPipelineHandler(object):
                 self.approve_assignment_submitted_to_approved()
             elif selection == "7":
                 self.get_assignment_stats()
+            elif selection == "8":
+                self.approve_assignment_by_worker()
             else:
                 selection = "12"
                 

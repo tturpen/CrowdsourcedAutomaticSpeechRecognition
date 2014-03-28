@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import urllib2
+from urllib2 import URLError
 import os
 import shutil
 
@@ -29,6 +30,9 @@ class RecordingHandler(object):
             download_url = self.wav_base_url.replace(self.record_id_tag,remote_file_id)
             dest = os.path.join(self.recording_basedir,os.path.basename(url)+".wav")
             if not os.path.exists(dest):
-                response = urllib2.urlopen(download_url).read()
-                open(dest,"w").write(response)        
+                try:
+                    response = urllib2.urlopen(download_url).read()
+                    open(dest,"w").write(response)
+                except URLError:
+                    return False        
             return dest

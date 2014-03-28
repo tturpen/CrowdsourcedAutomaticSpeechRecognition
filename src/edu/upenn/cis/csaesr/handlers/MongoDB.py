@@ -500,7 +500,7 @@ class MongoElicitationHandler(object):
             if ObjectId.is_valid(artifact_id):
                 self.c[collection].update({"_id":ObjectId(artifact_id)}, document)
             else:
-                self.c[collection].update({"_id":artifact_id}, document)
+                self.c[collection].update({"_id":artifact_id}, document)                
             if field != "state":
                 #Because updating the state calls this method
                 self.update_artifact_state(collection, artifact_id)
@@ -576,7 +576,9 @@ class MongoElicitationHandler(object):
             art_id = self.get_artifact(collection, document,"_id")
             self.logger.info("Created %s artifact(%s) "%(collection,art_id))
         elif update:
-            self.update_artifact_by_id(collection,art_id,document=document)
+            for key, value in document.iteritems():
+                if key != "_id":
+                    self.update_artifact_by_id(collection,art_id,key,value)
         self.update_artifact_state(collection, art_id)
         return art_id       
         
@@ -589,7 +591,7 @@ class MongoElicitationHandler(object):
         art_id = self.create_artifact("elicitation_hits",{"_id": hit_id},document)
         return art_id
     
-    def create_assignment_artifact(self,assignment,answers):
+    def create_assignment_artifact(self,assignment,answers,zipcode=None,incomplete=None):
         """Create the assignment document with the transcription ids.
             AMTAssignmentStatus is the AMT assignment state.
             state is the engine lifecycle state."""
@@ -598,9 +600,14 @@ class MongoElicitationHandler(object):
                      "AcceptTime": assignment.AcceptTime,
                      "AMTAssignmentStatus" : assignment.AssignmentStatus,
                      "AutoApprovalTime" : assignment.AutoApprovalTime,
+                     "SubmitTime": assignment.SubmitTime,
                      "hit_id" : assignment.HITId,
                      "worker_id" : assignment.WorkerId,
                      "recordings" : answers}
+        if zipcode:
+            document["zipcode"] = zipcode
+        if incomplete:
+            document["incomplete"] = True
         art_id = self.create_artifact("elicitation_assignments", {"_id": assignment_id},document)        
         return art_id
     
@@ -643,6 +650,8 @@ class MongoElicitationHandler(object):
         """Use the recording handler to download the recording
             and create the artifact"""
         recording_uri = self.rh.download_vocaroo_recording(recording_url)
+        if not recording_uri:
+            return False
         search = {"recording_url" : recording_url}
         document = {"recording_url": recording_url,
                     "prompt_id": prompt_id,
