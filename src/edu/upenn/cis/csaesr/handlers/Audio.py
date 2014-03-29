@@ -48,13 +48,13 @@ class PromptHandler(object):
     def get_prompts(self,prompt_file_uri,comment_char=";"):
         lines = open(prompt_file_uri).readlines()
         result = {}
-        for line in lines:
+        for i, line in enumerate(lines):
             if not line.startswith(";"):
                 words = line.split(" ")
                 sent_id = words[-1].strip().lstrip("(").strip(")")
                 if sent_id in result:
                     raise DuplicateSentenceIds
-                result[sent_id] = words[:-1]
+                result[sent_id] = (words[:-1],i)
         return result
                
         

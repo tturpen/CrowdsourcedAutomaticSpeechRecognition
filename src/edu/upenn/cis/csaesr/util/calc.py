@@ -13,11 +13,19 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 def main():
-    ref = "Humpty dumpty broke his head."
-    hyp = "Humpty broke his nose on the sidewalk by the church."
-    print(wer(ref.split(),hyp.split()))
+    ref = ["Humpty","dumpty","broke","his","head."]
+    hyp = ["Humpty","dumpty","broke","his","nose",""]#"on","the","sidewalk","by","the","church."]
     
-CHARACTER_ERROR_RATE_THRESHOLD = .4
+    ref2 = ['is', "lockwood's", 'destination', 'the', 'same', 'as', 'the', "mcclusky's"]
+    hyp2 = ['is', 'lockwoods', 'destination', 'the', 'same', 'as', 'the', 'macloskeys']
+    
+    hyp3 = ['list', 'confidences', 'threats.']
+    ref3 = ['list', "confidence's", 'threats']
+    
+    print(cer_wer(ref2,hyp2))
+    print(wer(ref,hyp))
+    
+MAXIMUM_WRONG_CHARACTERS = 2
 MINMUM_CHARACTERS_FOR_CER = 5
 
 def wer(ref,hyp):
@@ -75,7 +83,7 @@ def cer_compare(ref_tok,hyp_tok):
         else return False or their comparison"""
     cer = wer(ref_tok,hyp_tok)
     if len(ref_tok) >= MINMUM_CHARACTERS_FOR_CER:
-        if cer <= CHARACTER_ERROR_RATE_THRESHOLD:
+        if cer <= MAXIMUM_WRONG_CHARACTERS/len(ref_tok):
             return True
         return False
     return ref_tok == hyp_tok
