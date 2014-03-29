@@ -389,7 +389,7 @@ class MongoElicitationHandler(object):
         self.queue_revive_time = 5 
         client = MongoClient(self.default_db_loc)
         self.db_name = "elicitation"
-        self.db = client.production_elicitation_db
+        self.db = client.elicitation_db
         self.c = {}#dictionary of collections
         
         #Initialize the state maps

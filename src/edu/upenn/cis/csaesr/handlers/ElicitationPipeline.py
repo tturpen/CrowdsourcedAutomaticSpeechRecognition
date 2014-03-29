@@ -30,8 +30,8 @@ import os
 import datetime
 import time
 
-HOST='mechanicalturk.amazonaws.com'
-#HOST='mechanicalturk.sandbox.amazonaws.com'
+#HOST='mechanicalturk.amazonaws.com'
+HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
 cost_sensitive = True
 
