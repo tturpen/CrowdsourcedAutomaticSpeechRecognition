@@ -1,0 +1,19 @@
+In order to interact with the current batch of hits and assignments, you need to have the most current database dump. Because the database is a mongo database, the database dump is in json files but can also be loaded restored via the mongorestore commandline interface. You must have mongodb setup on your computer. To restore the mongo database or load it from a previous dump, see here:
+http://docs.mongodb.org/manual/tutorial/backup-with-mongodump/
+
+Once you have the latest dump restored to your mongo database, run Mongo:
+mongod --dbpath <path to your database that you mongorestored the dump to> --bind_ip 127.0.0.1 
+
+grab the latest elicitations via the following steps:
+Instructions to get latest Audio elicitations from MTURK.
+1. Run tests/engine_test.py with the elicitation_engine() line uncommented.
+2. The elicitation engine runs the elicitation_pipeline.run() which has a number of options.
+3. To grab the latest assignments and elicitation recordings, select option #3.
+
+To grade the assignments you just loaded from MTurk, selection option #7. If you have linux, that will play each assignment's audio recordings in sequence and then give you the option to approve the assignment or to reject the assignment. You will also be given the option to approve a worker and won't be asked about their work again.
+
+To see if you have everything working, try the following:
+1. Load the 032914 version of the database. That is the second to last database backup.
+2. Select option 3 in the elicitation pipeline run.
+3. See the new elicitations being downloaded from the web and also check the databse to see the new entries being created.
+
