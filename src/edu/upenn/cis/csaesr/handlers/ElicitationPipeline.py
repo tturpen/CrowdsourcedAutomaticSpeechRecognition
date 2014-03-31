@@ -226,12 +226,6 @@ class ElicitationPipelineHandler(object):
         effective_hourly_wage = 60.0*60.0/seconds_per_assignment * reward_per_assignment
         print("Effective completion time(%s) *reward(%s) = %s"%(seconds_per_assignment,reward_per_assignment,effective_hourly_wage))
                         
-    def recording_sources_generate_worker_sorted_html(self):
-        sources = self.mh.get_all_artifacts("recording_sources")
-        for source in sources:
-            if not self.mh.get_artifact("workers", {"eid": source["worker_id"]}):
-                pass
-            
     def enqueue_prompts_and_generate_hits(self):
         prompts = self.mh.get_artifacts_by_state("prompts", "New")
         for prompt in prompts:
@@ -323,20 +317,16 @@ class ElicitationPipelineHandler(object):
         prompt_file_uri = "/home/taylor/data/corpora/LDC/LDC93S3A/rm_comp/rm1_audio1/rm1/doc/al_sents.snr"
         selection = 0
         #self.get_time_submitted_for_assignments()
-        while selection != "12":
+        while selection != "8":
             selection = raw_input("""Prompt Source raw to Elicitations-Approved Pipeline:\n
                                      1: PromptSource-Load_RawToList: Load Resource Management 1 prompt source files to queueable prompts
                                      2: Prompt-ReferencedToHit: Queue all referenced prompts and create a HIT if the queue is full.
-                                     3: Prompt-HitToAssignmentSubmitted: Check all submitted assignments for Elicitations.
-                                     4: RecordingSources-GenerateWorkerSortedHtml: Check all submitted assignments for Elicitations.
-                                     5: Review Current Hits
-                                     6: ElicitationAssignment-SubmittedToApproved: Approve submitted assignments.
-                                     7: Calculate wage stats
-                                     8: Approve assignment by worker 
-                                     9: Account balance
-                                     10: Worker stats
-                                     11: Recalculate worker WER
-                                     12: Exit
+                                     3: Prompt-HitToAssignmentSubmitted: Check all submitted assignments for Elicitations and download elicitations.
+                                     4: Maintain all assignments and hits.
+                                     5: (WARNING, approves all assignments) Approve all submitted assignments.
+                                     6: Calculate assignment stats.
+                                     7: Hand approve submitted assignments by elicitation and/or by worker. 
+                                     8: Exit
                                     """)
             if selection == "1":
                 self.load_PromptSource_RawToList(prompt_file_uri)
@@ -345,17 +335,15 @@ class ElicitationPipelineHandler(object):
             elif selection == "3":
                 self.load_assignment_hit_to_submitted()
             elif selection == "4":
-                self.recording_sources_generate_worker_sorted_html()
-            elif selection == "5":
                 self.allhits_liveness()
-            elif selection == "6":
+            elif selection == "5":
                 self.approve_assignment_submitted_to_approved()
-            elif selection == "7":
+            elif selection == "6":
                 self.get_assignment_stats()
-            elif selection == "8":
+            elif selection == "7":
                 self.approve_assignment_by_worker()
             else:
-                selection = "12"
+                selection = "8"
                 
 #    prompt_dict = self.ph.get_prompts(prompt_file_uri)
 
