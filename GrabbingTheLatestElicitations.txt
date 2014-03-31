@@ -2,6 +2,7 @@ Dependencies:
 for Linux, MongoDB (all the mongod, mongo, mongoexport and mongorestore commandline commands should be functional)
 for Linux, gnome-mplayer
 for python, pymongo
+for python, boto
 
 Suggested:
 I really like the MonjaDB extension for eclipse. It makes managing mongodbs much easier.

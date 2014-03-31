@@ -1,0 +1,28 @@
+Creating HITs using the Eliciation Pipeline
+WARNING:
+set the boto Mturk Connection URL to sandbox.mturk in handlers/ElicitationPipeline.py to:
+#HOST='mechanicalturk.amazonaws.com'
+HOST='mechanicalturk.sandbox.amazonaws.com'
+So that your hits don't cost you money. 
+
+Prerequisites:
+All you need to start running hits is a mongod instance running on a mongodb database. As long as there is an instance for pymongo to latch onto, you're good to go.
+
+1.Run run() in handlers/EliciationPipeline.py
+2.Load your source file via option #1, the loader expects prompts in the ResourceManagement prompt format:
+";" at the beginning of the line means it is a comment
+"(ALPHANUMERIC)" as the last word on the line should be the prompt id
+Each prompt should be separatated by a new line
+Each word should be space delimited.
+
+Here is an example:
+; 2 sentences used as dialect calibration material (not in Resource Management
+; language model):
+SHE HAD YOUR DARK SUIT IN GREASY WASH WATER ALL YEAR (SA1)
+DON+T ASK ME TO CARRY AN OILY RAG LIKE THAT (SA2)
+
+3. Queue the prompts and submit the HITs with option #2. The size of the queue is the number of prompts that are included in each HIT. Currently the default is 10 prompts with x30 redundancy.
+
+4. To retrieve the submitted assignments, select option #3. A full explanation of retrieving the assignments and grabbing the audio is detailed in GrabbingTheLatestEliciations.txt
+
+
