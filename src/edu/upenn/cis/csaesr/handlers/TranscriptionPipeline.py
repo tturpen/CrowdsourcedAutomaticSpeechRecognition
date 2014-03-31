@@ -25,7 +25,7 @@ import logging
 import os
 import datetime
 
-HOST='mechanicalturk.amazonaws.com'
+#HOST='mechanicalturk.amazonaws.com'
 #HOST='mechanicalturk.sandbox.amazonaws.com'
 
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"

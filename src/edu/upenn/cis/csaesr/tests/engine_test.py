@@ -27,8 +27,8 @@ from shutil import copyfile
 import logging
 import os
 
-#HOST='mechanicalturk.amazonaws.com'
-HOST='mechanicalturk.sandbox.amazonaws.com'
+HOST='mechanicalturk.amazonaws.com'
+#HOST='mechanicalturk.sandbox.amazonaws.com'
 TEMPLATE_DIR = "/home/taylor/csaesr/src/resources/resources.templates/"
 WER_THRESHOLD = .33
 
